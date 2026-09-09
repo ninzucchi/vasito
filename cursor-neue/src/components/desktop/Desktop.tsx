@@ -5,6 +5,9 @@ import { Dock } from "@/components/desktop/Dock";
 import { Window } from "@/components/window/Window";
 import { WindowProvider } from "@/components/window/WindowContext";
 import { fittedWindowGeo } from "@/components/desktop/geometry";
+import { isBot } from "@/types";
+import { useFeatureFlags } from "@/store/useFeatureFlags";
+import { useUiStore } from "@/store/useUiStore";
 import { MAIN_WINDOW_ID, useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { wallpaperBackground, preloadWallpapers } from "@/lib/wallpaper";
 import { WALLPAPERS } from "@/config";
@@ -19,7 +22,33 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 
+function leaveOpenBots() {
+  const state = useWorkspaceStore.getState();
+  for (const windowId of state.windowOrder) {
+    const win = state.windows[windowId];
+    const active = win ? state.agents[win.activeAgentId] : undefined;
+    if (!win || !isBot(active)) continue;
+    const fallbackId = state.agentOrder.find((id) => {
+      const agent = state.agents[id];
+      return !!agent && !isBot(agent) && !agent.thread;
+    });
+    if (fallbackId) state.setActiveAgent(windowId, fallbackId);
+  }
+  const ui = useUiStore.getState();
+  for (const [windowId, selection] of Object.entries(ui.sidebarAgentSelection)) {
+    const ids = selection.ids.filter((id) => !isBot(state.agents[id]));
+    if (ids.length === selection.ids.length) continue;
+    ui.setSidebarAgentSelection(windowId, {
+      ids,
+      anchorId: selection.anchorId && ids.includes(selection.anchorId) ? selection.anchorId : (ids[0] ?? null),
+    });
+  }
+  const composer = ui.composerSurface;
+  if (composer && isBot(state.agents[composer.agentId])) ui.closeComposerSurface();
+}
+
 export function Desktop() {
+  const bots = useFeatureFlags((s) => s.bots);
   const wallpaper = useAppearanceStore((s) => s.wallpaper);
   const setWallpaper = useAppearanceStore((s) => s.setWallpaper);
   const ref = useRef<HTMLDivElement>(null);
@@ -28,6 +57,10 @@ export function Desktop() {
   useEffect(() => {
     preloadWallpapers();
   }, []);
+
+  useEffect(() => {
+    if (bots === "off") leaveOpenBots();
+  }, [bots]);
 
   // Cmd/Ctrl+N creates a new agent in the focused window (top of the stack).
   // One document-level listener owns the shortcut for every window; state is read

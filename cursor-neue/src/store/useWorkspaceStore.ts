@@ -36,6 +36,7 @@ import {
   healGroupFolderOrder,
   healGroupParents,
   insertRepoInGroupFolderOrder,
+  isBot,
   isProject,
   isTrackerOwner,
   isTrackerScope,
@@ -61,13 +62,15 @@ import { useWindowId } from "@/components/window/WindowContext";
 import * as tree from "@/store/layoutTree";
 import { docToText } from "@/lib/composerDoc";
 import { projectJoinDividerText, projectJoinReplyText } from "@/lib/projectJoinNotice";
-import { createSeed } from "@/data/seed";
+import { createSeed, SEED_BOT_IDS, SEED_PROJECT_IDS } from "@/data/seed";
 import { prTabTitle, pullRequestById } from "@/data/pullRequests";
 import { taskContextTab } from "@/data/taskFiles";
 import { tasksFor } from "@/data/tasks";
 import { agentDisplayTitle } from "@/lib/agentDisplayName";
 import { workspaceBoardTasks, type BoardTask } from "@/lib/workspaceBoard";
-import { blankProjectTitle } from "@/lib/mergedLabels";
+import { blankBotTitle, blankProjectTitle } from "@/lib/mergedLabels";
+import { defaultBotProfile, firstParagraphText } from "@/lib/botDetails";
+import { botColorFromName, nextBotIdenticonSeed } from "@/lib/identicon";
 import { useFeatureFlags } from "@/store/useFeatureFlags";
 
 export const MAIN_WINDOW_ID = "main";
@@ -105,12 +108,16 @@ export interface WindowState {
   /** Content per scope ("ws:<id>@<branch>" | "project:<id>" | "agent:<id>").
    *  A project and its children share `project:<id>`. */
   contentByScope: Record<string, ContentScopeState>;
-  /** Visible chat tab strip. Tabs reference agents via `Tab.agentId`. */
+  /** Visible chat tab strip. Tabs reference agents via `Tab.agentId`.
+   *  A Status tab has no agent; it is the cross-workspace overview. */
   chatLayout: LayoutNode;
   /** Saved chat strips, keyed by owner. A project id stores that project's
    *  tabs (project first, then children). A standalone chat id stores a
    *  one-tab strip. Switching owners swaps `chatLayout` to that saved set. */
   chatByOwner: Record<string, LayoutNode>;
+  /** True while the center view is the Status tab, not an agent chat.
+   *  Hides the pinned island and the agent-row highlight. */
+  statusFocused?: boolean;
   /** Last content tile the user pointed into. Retargets a shared (side-by-side
    *  group) sidebar to that pane's active tab. Stale ids fall back gracefully. */
   focusedContentTileId?: string;
@@ -127,6 +134,8 @@ export interface WorkspaceData {
   /** Sidebar Projects section, in display order. Each id is an agent with
    *  `kind: "project"` — a real chat, plus a folder for children (`projectId`). */
   projectOrder: string[];
+  /** Sidebar Bots section, in display order. Each id is an agent with `kind: "bot"`. */
+  botOrder: string[];
   /** Top-level project and repo folders in Projects / Repositories grouping. */
   groupFolderOrder: string[];
   /** Sidebar Pinned section, in display order. Agent ids or project ids.
@@ -145,6 +154,8 @@ export interface WorkspaceData {
 interface WorkspaceActions {
   // Shell view state — scoped to a window.
   setActiveAgent: (windowId: string, id: string) => void;
+  /** Open or focus the Status tab in this window's chat strip. */
+  openStatusTab: (windowId: string) => void;
   /** Create a draft agent. Default home is Everysphere (`DEFAULT_WORKSPACE_ID`).
    *  Pass `workspaceId` / `projectId` to land in a folder or project. */
   createAgent: (
@@ -159,8 +170,20 @@ interface WorkspaceActions {
   /** Live-update title, workspace, or branch on an agent or project. */
   updateAgentMeta: (
     id: string,
-    patch: { title?: string; workspaceId?: string; branch?: string },
+    patch: {
+      title?: string;
+      workspaceId?: string;
+      branch?: string;
+      description?: string;
+      color?: ProjectColor;
+      instructions?: Agent["instructions"];
+      skills?: Agent["skills"];
+      routines?: Agent["routines"];
+      memories?: Agent["memories"];
+    },
   ) => void;
+  /** Remix a bot identicon. Keep the current color. */
+  remixBotIdenticon: (id: string) => void;
   /** Create a project chat and open it in the focused tile. */
   createProject: (
     windowId: string,
@@ -171,6 +194,11 @@ interface WorkspaceActions {
       color: ProjectColor;
       groupParentId?: string | null;
     },
+  ) => string | undefined;
+  /** Create a singular bot chat and open it. */
+  createBot: (
+    windowId: string,
+    input?: { title?: string; color?: ProjectColor; workspaceId?: string },
   ) => string | undefined;
   /** Create a new agent (inheriting the tile's context) as a NEW tab in a chat
    *  tile — the chat tab bar's "+" action. */
@@ -408,16 +436,37 @@ const chatOwnerId = (agent: Agent | undefined): string | null => {
   return agent.id;
 };
 
+/** Status uses the same owner-swap as bots and projects: one saved strip. */
+const STATUS_OWNER_ID = "status";
+
+const defaultStatusLayout = (): LayoutNode => tree.makeTile([tree.makeTab("status")]);
+
+const ownerIdOfWindow = (win: WindowState, agents: Record<string, Agent>): string | null =>
+  win.statusFocused ? STATUS_OWNER_ID : chatOwnerId(agents[win.activeAgentId]);
+
+const withoutStatusTabs = (layout: LayoutNode, fallback: LayoutNode): LayoutNode =>
+  tree.filterTabs(layout, (tab) => tab.type !== "status") ?? fallback;
+
+const onlyStatusTabs = (layout: LayoutNode): LayoutNode =>
+  tree.filterTabs(layout, (tab) => tab.type === "status") ?? defaultStatusLayout();
+
 /** Write the visible strip back under its owner so a later switch can restore it. */
 const rememberChatSet = (
   win: WindowState,
   agents: Record<string, Agent>,
   layout: LayoutNode = win.chatLayout,
 ): WindowState => {
-  const owner = chatOwnerId(agents[win.activeAgentId]);
+  const owner = ownerIdOfWindow(win, agents);
   let nextLayout = layout;
-  if (owner && isProject(agents[owner])) {
-    nextLayout = tree.partitionTabs(layout, (t) => t.agentId === owner);
+  if (owner === STATUS_OWNER_ID) {
+    nextLayout = onlyStatusTabs(layout);
+  } else if (owner && isProject(agents[owner])) {
+    nextLayout = tree.partitionTabs(
+      withoutStatusTabs(layout, layout),
+      (t) => t.agentId === owner,
+    );
+  } else {
+    nextLayout = withoutStatusTabs(layout, layout);
   }
   return {
     ...win,
@@ -572,26 +621,46 @@ const persistProjectChatSet = (layout: LayoutNode, project: Agent): LayoutNode =
 
 /** Sidebar / create: save the current owner's strip, then load or update the
  *  target owner's strip. Leaving a project drops its temp tabs. */
+const persistOwnerStrip = (
+  layout: LayoutNode,
+  owner: string,
+  agents: Record<string, Agent>,
+  fallback: LayoutNode,
+): LayoutNode => {
+  if (owner === STATUS_OWNER_ID) return layout;
+  const stripped = withoutStatusTabs(layout, fallback);
+  const project = agents[owner];
+  return project && isProject(project) ? persistProjectChatSet(stripped, project) : stripped;
+};
+
 const adoptAgentChat = (
   win: WindowState,
   agents: Record<string, Agent>,
   to: Agent,
 ): Pick<WindowState, "chatLayout" | "chatByOwner"> => {
   const from = agents[win.activeAgentId];
-  const fromOwner = chatOwnerId(from);
+  const fromOwner = ownerIdOfWindow(win, agents);
   const toOwner = chatOwnerId(to) ?? to.id;
   const chatByOwner = { ...(win.chatByOwner ?? {}) };
   const sameSet = fromOwner === toOwner;
   if (fromOwner) {
     const fromProject = agents[fromOwner];
     chatByOwner[fromOwner] =
-      fromProject && isProject(fromProject) && !sameSet
-        ? persistProjectChatSet(win.chatLayout, fromProject)
-        : isProject(fromProject)
-          ? tree.partitionTabs(win.chatLayout, (t) => t.agentId === fromOwner)
-          : win.chatLayout;
+      fromOwner === STATUS_OWNER_ID
+        ? onlyStatusTabs(win.chatLayout)
+        : fromProject && isProject(fromProject) && !sameSet
+          ? persistProjectChatSet(withoutStatusTabs(win.chatLayout, win.chatLayout), fromProject)
+          : isProject(fromProject)
+            ? tree.partitionTabs(
+                withoutStatusTabs(win.chatLayout, win.chatLayout),
+                (t) => t.agentId === fromOwner,
+              )
+            : withoutStatusTabs(win.chatLayout, defaultChatLayout(from));
   }
   let layout = sameSet ? win.chatLayout : (chatByOwner[toOwner] ?? defaultChatSet(to, agents));
+  if (toOwner !== STATUS_OWNER_ID) {
+    layout = withoutStatusTabs(layout, defaultChatSet(to, agents));
+  }
   const toProject = agents[toOwner];
   if (!sameSet && toProject && isProject(toProject)) {
     layout = persistProjectChatSet(layout, toProject);
@@ -604,8 +673,11 @@ const adoptAgentChat = (
 /** Chat-pane backfill for `moveTab`/`moveTabToRoot` self-splits: a mirror clone
  *  of the moving chat tab (same agent, fresh id) — the chat counterpart of the
  *  content pane's fresh Files tab. */
+/** Split/tear-off mirror. Status stays a Status tab; chats stay chats. */
 const chatMirror = (moving: Tab): Tab =>
-  tree.makeTab("chat", { agentId: moving.agentId, title: moving.title });
+  moving.type === "status"
+    ? tree.makeTab("status", { title: moving.title })
+    : tree.makeTab("chat", { agentId: moving.agentId, title: moving.title });
 
 /** Which content scope a window currently displays (its active agent's scope). */
 const scopeIdOfWindow = (state: WorkspaceData, win: WindowState): string => {
@@ -619,8 +691,8 @@ const scopeIdOfWindow = (state: WorkspaceData, win: WindowState): string => {
 const withPinnedLeading = tree.ensurePinnedTabs;
 
 /** A fresh content scope. Branch scopes get the default layout plus pinned
- *  tabs. Project and workspace owners get one Tracker tab. Workspace
- *  trackers start open; projects start closed (seed opens the ones we show). */
+ *  tabs. Project, workspace, and bot owners get one Tracker tab. Workspace
+ *  trackers start open; projects and bots start closed (seed opens projects). */
 const seededScope = (
   pinnedTabs: Record<string, TabType[]>,
   scopeId: string,
@@ -717,10 +789,13 @@ const withAgentOpened = (
  *  and selected tab). Workspace agents seed from pinned tabs. */
 const withActiveAgent = (win: WindowState, agent: Agent): WindowState => {
   const scopeId = contentScopeId(agent);
-  if (win.contentByScope[scopeId]) return { ...win, activeAgentId: agent.id };
+  if (win.contentByScope[scopeId]) {
+    return { ...win, activeAgentId: agent.id, statusFocused: false };
+  }
   return {
     ...win,
     activeAgentId: agent.id,
+    statusFocused: false,
     contentByScope: {
       ...win.contentByScope,
       [scopeId]: seededScope(useWorkspaceStore.getState().pinnedTabs, scopeId),
@@ -852,7 +927,13 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             syncActiveAgent(state.agents, reduced, nodeId),
             state.agents,
           );
-          set({ windows: { ...state.windows, [loc.windowId]: next } });
+          const statusLeft = !tree.findTab(next.chatLayout, (t) => t.type === "status");
+          set({
+            windows: {
+              ...state.windows,
+              [loc.windowId]: statusLeft ? { ...next, statusFocused: false } : next,
+            },
+          });
           return;
         }
         const scopeId = loc.scopeId ?? "";
@@ -975,6 +1056,40 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           discardOrphanedDrafts();
         },
 
+        openStatusTab: (windowId) => {
+          const state = get();
+          const win = state.windows[windowId];
+          if (!win) return;
+          if (win.statusFocused) {
+            if (win.chatCollapsed) patchWindow(windowId, { chatCollapsed: false });
+            return;
+          }
+          const from = state.agents[win.activeAgentId];
+          const fromOwner = chatOwnerId(from);
+          const chatByOwner = { ...(win.chatByOwner ?? {}) };
+          if (fromOwner) {
+            chatByOwner[fromOwner] = persistOwnerStrip(
+              win.chatLayout,
+              fromOwner,
+              state.agents,
+              defaultChatLayout(from),
+            );
+          }
+          const chatLayout = onlyStatusTabs(chatByOwner[STATUS_OWNER_ID] ?? defaultStatusLayout());
+          set({
+            windows: {
+              ...state.windows,
+              [windowId]: {
+                ...win,
+                chatLayout,
+                chatByOwner: { ...chatByOwner, [STATUS_OWNER_ID]: chatLayout },
+                chatCollapsed: false,
+                statusFocused: true,
+              },
+            },
+          });
+        },
+
         createAgent: (windowId, target) => {
           const state = get();
           const win = state.windows[windowId];
@@ -1001,7 +1116,21 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             primaryWorkspaceId(active) === workspaceId &&
             (active.projectId ?? null) === projectId
           ) {
-            if (win.chatCollapsed) patchWindow(windowId, { chatCollapsed: false });
+            const existing = tree.findTab(win.chatLayout, (tab) => tab.agentId === active.id);
+            const chatLayout = existing
+              ? tree.setActiveTab(win.chatLayout, existing.tile.id, existing.tab.id)
+              : win.chatLayout;
+            if (win.chatCollapsed || win.statusFocused || chatLayout !== win.chatLayout) {
+              set({
+                windows: {
+                  ...state.windows,
+                  [windowId]: rememberChatSet(
+                    { ...win, chatLayout, chatCollapsed: false, statusFocused: false },
+                    state.agents,
+                  ),
+                },
+              });
+            }
             return;
           }
           const id = tree.uid("a");
@@ -1022,7 +1151,6 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             messages: [],
             draft: true,
           };
-          const scopeId = contentScopeId(newAgent);
           const nextAgents = { ...state.agents, [id]: newAgent };
           const adopted = adoptAgentChat(win, nextAgents, newAgent);
           set({
@@ -1033,9 +1161,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             windows: {
               ...state.windows,
               [windowId]: {
-                ...win,
-                ...adopted,
-                activeAgentId: id,
+                ...withActiveAgent({ ...win, ...adopted }, newAgent),
                 chatCollapsed: false,
                 // Reveal its group.
                 collapsedSidebar: {
@@ -1044,11 +1170,6 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
                   ...(projectId ? { [projectId]: false } : {}),
                   ...(groupParentId ? { [groupParentId]: false } : {}),
                 },
-                // Respect the workspace's existing side pane; lazily seed only if
-                // this window hasn't shown the scope yet (mirrors setActiveAgent).
-                contentByScope: win.contentByScope[scopeId]
-                  ? win.contentByScope
-                  : { ...win.contentByScope, [scopeId]: seededScope(state.pinnedTabs, scopeId) },
               },
             },
           });
@@ -1065,19 +1186,42 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
               ? blankProjectTitle()
               : isWorkspace(agent)
                 ? (state.workspaces[id]?.name || id)
-                : "New Agent";
+                : isBot(agent)
+                  ? blankBotTitle()
+                  : "New Agent";
             next.title = patch.title.trim() || fallback;
           }
           if (patch.workspaceId !== undefined) {
             next.workspaceIds = normalizeWorkspaceIds(patch.workspaceId);
           }
           if (patch.branch !== undefined) next.branch = patch.branch;
+          if (patch.description !== undefined) next.description = patch.description;
+          if (patch.color !== undefined) next.color = patch.color;
+          if (patch.instructions !== undefined) next.instructions = patch.instructions;
+          if (patch.skills !== undefined) next.skills = patch.skills;
+          if (patch.routines !== undefined) next.routines = patch.routines;
+          if (patch.memories !== undefined) next.memories = patch.memories;
           if (next === agent) return;
           const workspaces =
             patch.title !== undefined && isWorkspace(agent) && state.workspaces[id]
               ? { ...state.workspaces, [id]: { ...state.workspaces[id], name: next.title } }
               : state.workspaces;
           set({ agents: { ...state.agents, [id]: next }, workspaces });
+        },
+
+        remixBotIdenticon: (id) => {
+          const state = get();
+          const agent = state.agents[id];
+          if (!agent || !isBot(agent)) return;
+          set({
+            agents: {
+              ...state.agents,
+              [id]: {
+                ...agent,
+                identiconSeed: nextBotIdenticonSeed(agent.identiconSeed),
+              },
+            },
+          });
         },
 
         createProject: (windowId, input) => {
@@ -1130,6 +1274,53 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
                 contentByScope: win.contentByScope[scopeId]
                   ? win.contentByScope
                   : { ...win.contentByScope, [scopeId]: seededScope(state.pinnedTabs, scopeId) },
+              },
+            },
+          });
+          return id;
+        },
+
+        createBot: (windowId, input = {}) => {
+          const state = get();
+          const win = state.windows[windowId];
+          if (!win) return;
+          const workspaceId = state.workspaces[input.workspaceId ?? DEFAULT_WORKSPACE_ID]
+            ? (input.workspaceId ?? DEFAULT_WORKSPACE_ID)
+            : DEFAULT_WORKSPACE_ID;
+          const title = input.title?.trim() || blankBotTitle();
+          const id = tree.uid("b");
+          const now = Date.now();
+          const profile = defaultBotProfile(title, "");
+          const newBot: Agent = {
+            id,
+            kind: "bot",
+            workspaceIds: normalizeWorkspaceIds(workspaceId),
+            groupParentId: null,
+            branch: "main",
+            title,
+            status: "idle",
+            updatedAt: now,
+            createdAt: now,
+            messages: [],
+            color: input.color ?? botColorFromName(title),
+            ...profile,
+            description: firstParagraphText(profile.instructions),
+          };
+          const nextAgents = { ...state.agents, [id]: newBot };
+          const adopted = adoptAgentChat(win, nextAgents, newBot);
+          set({
+            agents: nextAgents,
+            agentOrder: [id, ...state.agentOrder],
+            botOrder: [id, ...state.botOrder],
+            windows: {
+              ...state.windows,
+              [windowId]: {
+                ...withActiveAgent({ ...win, ...adopted }, newBot),
+                chatCollapsed: false,
+                collapsedSidebar: {
+                  ...win.collapsedSidebar,
+                  [SIDEBAR_SECTION.bots]: false,
+                },
               },
             },
           });
@@ -1217,8 +1408,19 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           const win = state.windows[loc.windowId];
           const tile = tree.findTile(win.chatLayout, tileId);
           const tab = tile?.tabs.find((t) => t.id === tile.activeTabId);
+          if (tab?.type === "status") {
+            if (win.statusFocused) return;
+            set({
+              windows: {
+                ...state.windows,
+                [loc.windowId]: { ...win, statusFocused: true },
+              },
+            });
+            return;
+          }
           const agent = tab?.agentId ? state.agents[tab.agentId] : undefined;
-          if (!agent || win.activeAgentId === agent.id) return;
+          if (!agent) return;
+          if (win.activeAgentId === agent.id && !win.statusFocused) return;
           set({
             agents: withAgentOpened(state.agents, agent.id),
             windows: { ...state.windows, [loc.windowId]: withActiveAgent(win, agent) },
@@ -1409,6 +1611,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             agents,
             agentOrder,
             projectOrder: state.projectOrder.filter((pid) => !removedIds.has(pid)),
+            botOrder: state.botOrder.filter((bid) => !removedIds.has(bid)),
             groupFolderOrder,
             pinnedAgents: state.pinnedAgents.filter((aid) => !removedIds.has(aid)),
             windows,
@@ -2157,10 +2360,22 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
             const win = state.windows[loc.windowId];
             const chatLayout = tree.setActiveTab(win.chatLayout, tileId, tabId);
             const tab = tree.findTile(chatLayout, tileId)?.tabs.find((t) => t.id === tabId);
+            if (tab?.type === "status") {
+              set({
+                windows: {
+                  ...state.windows,
+                  [loc.windowId]: rememberChatSet(
+                    { ...win, chatLayout, statusFocused: true },
+                    state.agents,
+                  ),
+                },
+              });
+              return;
+            }
             const agent = tab?.agentId ? state.agents[tab.agentId] : undefined;
             const base = agent
               ? withActiveAgent({ ...win, chatLayout }, agent)
-              : { ...win, chatLayout };
+              : { ...win, chatLayout, statusFocused: false };
             set({
               agents: agent ? withAgentOpened(state.agents, agent.id) : state.agents,
               windows: {
@@ -2749,6 +2964,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
         const merged = { ...current, ...(persisted as Partial<WorkspaceData>) };
         merged.pinnedAgents ??= [];
         merged.projectOrder ??= [];
+        merged.botOrder ??= [];
         const persistedData = persisted as Partial<WorkspaceData> | undefined;
         const hadFolderOrder = Array.isArray(persistedData?.groupFolderOrder);
         if (merged.workspaces) {
@@ -2771,24 +2987,45 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           const nextAgents: Record<string, Agent> = {};
           for (const [id, agent] of Object.entries(merged.agents)) {
             const legacy = agent as Agent & { workspaceId?: string | null };
+            const seeded = seedAgents[id];
+            const keepBotCopy = !!seeded && isBot(agent);
             nextAgents[id] = {
               ...agent,
               workspaceIds: normalizeWorkspaceIds(legacy.workspaceIds ?? legacy.workspaceId),
-              description: seedAgents[id]?.description ?? agent.description,
-              title: seedAgents[id]?.title ?? agent.title,
-              createdAt: seedAgents[id]?.createdAt ?? agent.createdAt ?? agent.updatedAt,
-              updatedAt: seedAgents[id]?.updatedAt ?? agent.updatedAt,
-              status: seedAgents[id]?.status ?? agent.status,
+              description: seeded?.description ?? agent.description,
+              title: keepBotCopy ? agent.title : (seeded?.title ?? agent.title),
+              createdAt: seeded?.createdAt ?? agent.createdAt ?? agent.updatedAt,
+              updatedAt: seeded?.updatedAt ?? agent.updatedAt,
+              status: seeded?.status ?? agent.status,
               messages:
-                (id === "p-keyboard" || id === "p-sidebar" || id === "p-base-ui") &&
-                seedAgents[id]
-                  ? seedAgents[id].messages
+                ((SEED_PROJECT_IDS as readonly string[]).includes(id) ||
+                  (SEED_BOT_IDS as readonly string[]).includes(id)) &&
+                seeded
+                  ? seeded.messages
                   : agent.messages,
+              instructions: seeded?.instructions ?? agent.instructions,
+              skills: seeded?.skills ?? agent.skills,
+              routines: seeded?.routines ?? agent.routines,
+              memories: seeded?.memories ?? agent.memories,
             };
+          }
+          for (const id of SEED_BOT_IDS) {
+            if (nextAgents[id]) continue;
+            const seeded = seedAgents[id];
+            if (seeded) nextAgents[id] = seeded;
           }
           merged.agents = healGroupParents(
             ensureWorkspaceAgents(merged.workspaces ?? {}, nextAgents),
           );
+          const missingBots = SEED_BOT_IDS.filter((id) => !merged.agentOrder?.includes(id));
+          if (missingBots.length) {
+            merged.agentOrder = [...missingBots, ...(merged.agentOrder ?? [])];
+          }
+          const botOrder = merged.botOrder ?? [];
+          for (const id of SEED_BOT_IDS) {
+            if (!botOrder.includes(id)) botOrder.push(id);
+          }
+          merged.botOrder = botOrder;
           if (!hadFolderOrder) {
             merged.agents = flattenProjectsOutOfWorkspaces(merged.agents);
           }
@@ -2820,8 +3057,24 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           if (merged.agents) {
             let contentByScope = next.contentByScope;
             for (const agent of Object.values(merged.agents)) {
-              if (!isProject(agent) && !isWorkspace(agent)) continue;
               const sid = contentScopeId(agent);
+              if (isBot(agent)) {
+                const cur = contentByScope[sid];
+                const hasTracker =
+                  !!cur && tree.allTabs(cur.layout).some(({ tab }) => tab.type === "project");
+                if (!hasTracker) {
+                  contentByScope = {
+                    ...contentByScope,
+                    [sid]: {
+                      layout: tree.makeProjectLayout(),
+                      open: false,
+                      cleared: false,
+                    },
+                  };
+                }
+                continue;
+              }
+              if (!isProject(agent) && !isWorkspace(agent)) continue;
               if (contentByScope[sid]) continue;
               contentByScope = {
                 ...contentByScope,
@@ -2844,6 +3097,7 @@ export const useWorkspaceStore = create<WorkspaceStore>()(
           agents: s.agents,
           agentOrder: s.agentOrder,
           projectOrder: s.projectOrder,
+          botOrder: s.botOrder,
           groupFolderOrder: s.groupFolderOrder,
           pinnedAgents: s.pinnedAgents,
           pinnedTabs: s.pinnedTabs,
@@ -2867,6 +3121,12 @@ const FALLBACK_SCOPE: ContentScopeState = defaultScope();
 export const useWindow = (): WindowState | undefined => {
   const windowId = useWindowId();
   return useWorkspaceStore((s) => s.windows[windowId]);
+};
+
+/** True when this window's center view is the Status tab. */
+export const useStatusFocused = (): boolean => {
+  const windowId = useWindowId();
+  return useWorkspaceStore((s) => !!s.windows[windowId]?.statusFocused);
 };
 
 export const useActiveAgent = (): Agent | undefined => {

@@ -1,3 +1,4 @@
+import type { JSONContent } from "@tiptap/core";
 import type { IconName } from "@/icons/iconNames";
 
 // Core domain types for the prototype.
@@ -6,12 +7,14 @@ import type { IconName } from "@/icons/iconNames";
 // Chat panel and is NOT offered in the Content panel's + menu.
 export type TabType =
   | "chat"
+  | "status"
   | "files"
   | "browser"
   | "terminal"
   | "canvas"
   | "review"
   | "project"
+  | "bot"
   | "pr"
   | "context";
 
@@ -36,11 +39,10 @@ export interface Tab {
 // this is purely the placement-policy / UI-variant axis.
 export type PaneKind = "chat" | "content";
 
-/** THE placement policy: which tabs may live in which pane. Today chat tabs
- *  stay in the chat pane and everything else stays in the content pane; future
- *  interoperability between the panes is a change to this one predicate. */
+/** THE placement policy: which tabs may live in which pane. Chat and Status
+ *  stay in the chat pane. Everything else stays in the content pane. */
 export const canDropInPane = (type: TabType, pane: PaneKind): boolean =>
-  (type === "chat") === (pane === "chat");
+  (type === "chat" || type === "status") === (pane === "chat");
 
 export interface TileNode {
   kind: "tile";
@@ -110,11 +112,31 @@ export const AGENT_TRAY_STATUSES: AgentStatus[] = [
 ];
 
 // A single chat turn. `tool` is an agent-only status line (e.g. "Worked 12s")
-// rendered just above the message text.
+// rendered just above the message text. `trigger` is the source line on a
+// left-aligned inbound event. `gated` hides the turn unless that flag is on.
+export type ChatMessageRole = "user" | "agent" | "divider" | "trigger";
+export type ChatMessageGate = "triggers";
+
+export interface ChatMessageTrigger {
+  label: string;
+  icon: IconName;
+}
+
 export interface ChatMessage {
-  role: "user" | "agent" | "divider";
+  role: ChatMessageRole;
   text: string;
   tool?: string;
+  gated?: ChatMessageGate;
+  trigger?: ChatMessageTrigger;
+}
+
+/** Hide gated trigger turns when the Triggers flag is off. */
+export function transcriptMessages(
+  messages: ChatMessage[],
+  triggersOn: boolean,
+): ChatMessage[] {
+  if (triggersOn) return messages;
+  return messages.filter((message) => message.gated !== "triggers");
 }
 
 /** Marks an agent as a side-thread spawned from a text selection in another
@@ -130,9 +152,10 @@ export interface ThreadRef {
 
 /** A project is an agent that can also nest other agents. Same chat, content
  *  scope, and metadata as a regular agent; the sidebar lists it under Projects.
- *  A workspace agent is the folder's own chat + aggregated tracker. Hidden
- *  from sidebar lists; the Workspace row selects it. */
-export type AgentKind = "agent" | "project" | "workspace";
+ *  A bot is a project fork: same private chat and content scope, never a
+ *  folder, listed under Bots. A workspace agent is the folder's own chat +
+ *  aggregated tracker. Hidden from sidebar lists; the Workspace row selects it. */
+export type AgentKind = "agent" | "project" | "workspace" | "bot";
 
 /** Cursor color-family tokens used as a project icon stroke. */
 export const PROJECT_COLORS = [
@@ -234,7 +257,7 @@ export type WorkspaceIds = readonly [string, ...string[]];
 
 export interface Agent {
   id: string;
-  /** Absent = `"agent"`. `"project"` is a first-class chat that can own children. */
+  /** Absent = `"agent"`. `"project"` owns children. `"bot"` is a singular project fork. */
   kind?: AgentKind;
   /** Workspaces this agent belongs to. Never empty — `normalizeWorkspaceIds`
    *  is the only writer. A project's stored list is its own chat scope.
@@ -270,10 +293,38 @@ export interface Agent {
   elevated?: boolean;
   /** Project-only: sidebar glyph. Stroke uses `color`; hover still shows the chevron. */
   icon?: IconName;
-  /** Project-only: Cursor color-family token for the icon stroke. */
+  /** Project icon stroke, or bot identicon hue. */
   color?: ProjectColor;
-  /** Project-only: summary under the title in the thread header and tracker doc. */
+  /** Bot-only: Grid v4 combo seed. Absent = the default seed (1). Remix
+   *  changes this and keeps `color`. */
+  identiconSeed?: number;
+  /** Project or bot: summary under the title in the thread header. */
   description?: string;
+  /** Bot-only: TipTap instructions document. */
+  instructions?: JSONContent;
+  /** Bot-only: named skills shown on the details page. */
+  skills?: BotSkill[];
+  /** Bot-only: periodic jobs. Display only for now. */
+  routines?: BotRoutine[];
+  /** Bot-only: TipTap memories document. */
+  memories?: JSONContent;
+}
+
+/** Skill row on a bot. `icon` defaults to cube. */
+export interface BotSkill {
+  id: string;
+  name: string;
+  description: string;
+  icon?: IconName;
+}
+
+/** Periodic job on a bot. Display only for now. */
+export interface BotRoutine {
+  id: string;
+  title: string;
+  schedule: string;
+  /** Absent = on. */
+  enabled?: boolean;
 }
 
 /** Sidebar New Agent / Cmd+N land here when no folder or project is specified. */
@@ -303,15 +354,18 @@ export const agentInWorkspace = (a: Agent, workspaceId: string): boolean =>
 
 export const agentKind = (a: Agent): AgentKind => a.kind ?? "agent";
 export const isProject = (a: Agent | undefined): boolean => !!a && agentKind(a) === "project";
+export const isBot = (a: Agent | undefined): boolean => !!a && agentKind(a) === "bot";
 export const isWorkspace = (a: Agent | undefined): boolean =>
   !!a && agentKind(a) === "workspace";
 /** Project or workspace: owns a Tracker tab and a thread header. */
 export const isTrackerOwner = (a: Agent | undefined): boolean =>
   isProject(a) || isWorkspace(a);
+/** Project or bot: private content scope and its own chat owner. */
+export const isScopedChat = (a: Agent | undefined): boolean => isProject(a) || isBot(a);
 
-/** Regular sidebar chat: not a project, workspace, thread, or project child. */
+/** Regular sidebar chat: not a project, bot, workspace, thread, or project child. */
 export const isChatsAgent = (a: Agent): boolean =>
-  !a.thread && !isProject(a) && !isWorkspace(a) && !a.projectId;
+  !a.thread && !isProject(a) && !isBot(a) && !isWorkspace(a) && !a.projectId;
 
 /** Row that belongs in the main Chats list. Projects join when `includeProjects`. */
 export const isMainListItem = (a: Agent, includeProjects: boolean): boolean => {
@@ -334,11 +388,13 @@ export const isDraftProject = (a: Agent | undefined): boolean =>
 export const isBlankDraft = (a: Agent | undefined): boolean =>
   isDraftAgent(a) || isDraftProject(a);
 
-/** First line of the latest agent reply, or empty when none exists. */
+/** First line of the latest agent reply, or empty when none exists.
+ *  Skips gated trigger replies so a hidden flag does not leak into previews. */
 export const lastAgentReply = (agent: Agent): string => {
   for (let i = agent.messages.length - 1; i >= 0; i--) {
     const message = agent.messages[i];
     if (message.role !== "agent") continue;
+    if (message.gated === "triggers") continue;
     return message.text.split("\n")[0]?.trim() ?? "";
   }
   return "";
@@ -424,7 +480,7 @@ export function ensureWorkspaceAgents(
 /** Visible under a project folder when Focus Folders is on.
  *  Elevated children only. Status does not force a listing. */
 export function isFocusFolderChild(agent: Agent): boolean {
-  if (agent.thread || isProject(agent) || isWorkspace(agent)) return false;
+  if (agent.thread || isProject(agent) || isBot(agent) || isWorkspace(agent)) return false;
   return !!agent.elevated;
 }
 
@@ -838,6 +894,7 @@ export const SIDEBAR_SECTION = {
   chats: "sec:chats",
   pinned: "sec:pinned",
   projects: "sec:projects",
+  bots: "sec:bots",
   group: "sec:group",
 } as const;
 
@@ -923,7 +980,7 @@ export const workspaceFolderCollapsed = (
 // child (and thread) under it share one scope, so the right pane's open state,
 // size (while it stays open), layout, and selected tab persist across hops.
 // A future Group concept would just take precedence in this resolver.
-export type ContentScopeId = string; // "ws:<id>@<branch>" | "project:<id>" | "workspace:<id>" | "agent:<id>"
+export type ContentScopeId = string; // "ws:<id>@<branch>" | "project:<id>" | "bot:<id>" | "workspace:<id>" | "agent:<id>"
 
 /** Project that owns this agent's content panel, if any. */
 export const contentProjectId = (a: Agent): string | null =>
@@ -931,6 +988,7 @@ export const contentProjectId = (a: Agent): string | null =>
 
 export const contentScopeId = (a: Agent): ContentScopeId => {
   if (isWorkspace(a)) return `workspace:${a.id}`;
+  if (isBot(a)) return `bot:${a.id}`;
   const projectId = contentProjectId(a);
   return projectId
     ? `project:${projectId}`
@@ -944,9 +1002,12 @@ export const isProjectScope = (scopeId: ContentScopeId): boolean =>
 export const isWorkspaceScope = (scopeId: ContentScopeId): boolean =>
   scopeId.startsWith("workspace:");
 
-/** Project and workspace entity scopes both use a Tracker layout. */
+export const isBotScope = (scopeId: ContentScopeId): boolean =>
+  scopeId.startsWith("bot:");
+
+/** Project, workspace, and bot entity scopes use a Tracker layout. */
 export const isTrackerScope = (scopeId: ContentScopeId): boolean =>
-  isProjectScope(scopeId) || isWorkspaceScope(scopeId);
+  isProjectScope(scopeId) || isWorkspaceScope(scopeId) || isBotScope(scopeId);
 
 /** Workspace id embedded in a scope id, or null for a standalone-agent scope.
  *  Canonical decoder so the "@<branch>" suffix is split in exactly one place. */
@@ -975,12 +1036,14 @@ export interface ContentScopeState {
 // transforms and the component registry can reference it).
 export const TAB_LABEL: Record<TabType, string> = {
   chat: "Chat",
+  status: "Status",
   files: "Files",
   browser: "Browser",
   terminal: "Terminal",
   canvas: "Canvas",
   review: "Changes",
   project: "Tracker",
+  bot: "Bot Info",
   pr: "PR",
   context: "Context",
 };
@@ -1002,12 +1065,14 @@ export const treeTabHasOpenFile = (tab: Tab): boolean =>
 // New tabs open with their sidebar collapsed by default, except files and context.
 export const DEFAULT_SIDEBAR_OPEN: Record<TabType, boolean> = {
   chat: false,
+  status: false,
   files: true,
   browser: false,
   terminal: false,
   canvas: false,
   review: false,
   project: false,
+  bot: false,
   pr: false,
   context: true,
 };
@@ -1049,6 +1114,7 @@ export type ComposerBlock =
 export const CONTENT_TAB_TYPES: TabType[] = [
   "files",
   "project",
+  "bot",
   "context",
   "browser",
   "terminal",
@@ -1065,7 +1131,7 @@ export const DEFAULT_PINNED_TABS: TabType[] = ["review", "files", "terminal"];
 // order never depends on the sequence of pin/unpin clicks.
 export const PINNED_TAB_ORDER: TabType[] = [
   ...DEFAULT_PINNED_TABS,
-  ...CONTENT_TAB_TYPES.filter((t) => !DEFAULT_PINNED_TABS.includes(t)),
+  ...CONTENT_TAB_TYPES.filter((t) => !DEFAULT_PINNED_TABS.includes(t) && t !== "bot"),
 ];
 
 /** A workspace's pinned tab types: its stored override if present, else the

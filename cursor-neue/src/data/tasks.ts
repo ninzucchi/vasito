@@ -39,16 +39,24 @@ const task = (
   title: string,
   status: TaskStatus,
   links?: { agentId?: string; prId?: string },
-): Task => ({
-  id,
-  title,
-  status,
-  ...links,
-});
+): Task => {
+  const agentId = links?.agentId;
+  const prId = links?.prId;
+  if ((status === "in-progress" || status === "for-review") && !agentId) {
+    throw new Error(`Task ${id} is ${status} and must have an agent`);
+  }
+  if (status === "completed" && prId && !agentId) {
+    throw new Error(`Task ${id} has a PR and must have an agent`);
+  }
+  if (status === "completed" && !prId && agentId) {
+    throw new Error(`Task ${id} is canceled and must not have an agent`);
+  }
+  return { id, title, status, ...links };
+};
 
-/** Seed tasks keyed by project id. Up Next has no agent. In Progress agents
- *  are running. For Review agents are unread or idle, and PRs are open.
- *  Completed lists a merged or closed PR only. */
+/** Seed tasks keyed by project or bot id. Up Next has no agent. In Progress
+ *  and For Review always have an agent (a bot row uses that bot). Completed
+ *  work with a PR has an agent. Completed without a PR is canceled. */
 export const TASKS_BY_PROJECT: Record<string, Task[]> = {
   "p-sidebar": [
     task(
@@ -209,6 +217,118 @@ export const TASKS_BY_PROJECT: Record<string, Task[]> = {
       "completed",
       { agentId: "a-bu-20", prId: "pr-bu-20" },
     ),
+  ],
+  "b-pr-tracker": [
+    task("t-prt-1", "Suppress nags on draft PRs", "completed", {
+      agentId: "b-pr-tracker",
+      prId: "pr-prt-1",
+    }),
+    task("t-prt-2", "Watch failing checks on open PRs", "in-progress", {
+      agentId: "b-pr-tracker",
+      prId: "pr-prt-2",
+    }),
+    task("t-prt-3", "Flag flaky checks instead of blockers", "for-review", {
+      agentId: "b-pr-tracker",
+      prId: "pr-prt-3",
+    }),
+    task("t-prt-4", "Escalate only reviews that block merge", "in-progress", {
+      agentId: "b-pr-tracker",
+    }),
+    task("t-prt-5", "Group review waits by repo", "not-started"),
+    task("t-prt-6", "Mute volume spikes until they persist", "not-started"),
+  ],
+  "b-qa-team": [
+    task("t-qa-1", "Smoke the project header", "completed", {
+      agentId: "b-qa-team",
+      prId: "pr-qa-1",
+    }),
+    task("t-qa-2", "Smoke the Bots section", "in-progress", {
+      agentId: "b-qa-team",
+      prId: "pr-qa-2",
+    }),
+    task("t-qa-3", "Keyboard pass on bot rows", "for-review", {
+      agentId: "b-qa-team",
+      prId: "pr-qa-3",
+    }),
+    task("t-qa-4", "File only path-breaking bugs", "in-progress", { agentId: "b-qa-team" }),
+    task("t-qa-5", "Empty-state sweep for a new bot", "not-started"),
+    task("t-qa-6", "Skip copy nits on bot briefs", "completed"),
+  ],
+  "b-bug-watcher": [
+    task("t-bw-1", "Park one-off errors", "completed", {
+      agentId: "b-bug-watcher",
+      prId: "pr-bw-1",
+    }),
+    task("t-bw-2", "File the island-close null", "for-review", {
+      agentId: "b-bug-watcher",
+      prId: "pr-bw-2",
+    }),
+    task("t-bw-3", "Dedup repeat Sentry fingerprints", "in-progress", {
+      agentId: "b-bug-watcher",
+      prId: "pr-bw-3",
+    }),
+    task("t-bw-4", "Watch stale tab title after rename", "in-progress", {
+      agentId: "b-bug-watcher",
+    }),
+    task("t-bw-5", "Alert on volume jumps before filing a pile", "not-started"),
+    task("t-bw-6", "Ignore paging noise from closed windows", "not-started"),
+  ],
+  "b-docs": [
+    task("t-dc-1", "Stub the Bots section page", "completed", {
+      agentId: "b-docs",
+      prId: "pr-dc-1",
+    }),
+    task("t-dc-2", "Document singular bot rows", "in-progress", {
+      agentId: "b-docs",
+      prId: "pr-dc-2",
+    }),
+    task("t-dc-3", "Align project briefs with sidebar rules", "for-review", {
+      agentId: "b-docs",
+      prId: "pr-dc-3",
+    }),
+    task("t-dc-4", "Tracker surfaces for bots: tasks and PRs only", "in-progress", {
+      agentId: "b-docs",
+    }),
+    task("t-dc-5", "No create-bot dialog in the brief", "completed"),
+    task("t-dc-6", "Drop the stale no-tracker line", "not-started"),
+  ],
+  "b-research": [
+    task("t-rs-1", "Grid v4 hex melt at 18px", "completed", {
+      agentId: "b-research",
+      prId: "pr-rs-1",
+    }),
+    task("t-rs-2", "Compare lattices for sidebar density", "in-progress", {
+      agentId: "b-research",
+      prId: "pr-rs-2",
+    }),
+    task("t-rs-3", "Prior art: always-on agents vs bots", "for-review", {
+      agentId: "b-research",
+      prId: "pr-rs-3",
+    }),
+    task("t-rs-4", "What still reads on glass at 18px", "in-progress", {
+      agentId: "b-research",
+    }),
+    task("t-rs-5", "No animation in the sidebar", "completed"),
+    task("t-rs-6", "Folder chrome vs singular rows", "not-started"),
+  ],
+  "b-release": [
+    task("t-rc-1", "Bot chat opens with the pane closed", "completed", {
+      agentId: "b-release",
+      prId: "pr-rc-1",
+    }),
+    task("t-rc-2", "Hold the cut until Bots look settled", "in-progress", {
+      agentId: "b-release",
+      prId: "pr-rc-2",
+    }),
+    task("t-rc-3", "Green sidebar pass before ship", "for-review", {
+      agentId: "b-release",
+      prId: "pr-rc-3",
+    }),
+    task("t-rc-4", "Checklist: identicons and tracker tab", "in-progress", {
+      agentId: "b-release",
+    }),
+    task("t-rc-5", "Do not slip a silent cut", "completed"),
+    task("t-rc-6", "Announce the hold in standup", "not-started"),
   ],
 };
 

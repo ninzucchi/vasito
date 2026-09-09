@@ -39,7 +39,7 @@ const TASK_FILE_DESCRIPTION: Record<string, string> = {
 };
 
 export function taskFileStem(projectId: string, task: Pick<Task, "id">): string {
-  return taskTicketId(projectId, task).slice(1);
+  return taskTicketId(projectId, task);
 }
 
 export function taskFileName(projectId: string, task: Pick<Task, "id">): string {

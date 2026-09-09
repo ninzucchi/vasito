@@ -1,0 +1,34 @@
+.feed-doc.tiptap.ProseMirror {
+  font-size: var(--font-size-chat);
+  line-height: var(--line-height-chat);
+  color: var(--text-primary);
+
+  > h3:first-child {
+    margin-top: 0;
+    margin-bottom: 6px;
+  }
+
+  h3 {
+    font-size: var(--font-size-xl);
+    font-weight: 600;
+    line-height: var(--line-height-xl);
+    margin-top: 0;
+  }
+
+  p:not(:first-child) {
+    margin-top: 8px;
+  }
+
+  p {
+    font-size: var(--font-size-chat);
+    line-height: var(--line-height-chat);
+    font-weight: 400;
+  }
+
+  code {
+    padding: 0.1em 0.35em;
+    border-radius: 6px;
+    background-color: var(--tt-inline-code-bg-color);
+    font-size: 0.875em;
+  }
+}

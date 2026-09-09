@@ -1,17 +1,26 @@
 import clsx from "clsx";
 import type { ButtonHTMLAttributes } from "react";
 
-/** Figma OutlineButton, Size 32. Hairline secondary stroke, no fill. */
+export type OutlineButtonSize = "sm" | "md";
+
+const SIZE: Record<OutlineButtonSize, string> = {
+  sm: "h-6 px-1.5",
+  md: "h-8 px-2",
+};
+
+/** Figma OutlineButton. Hairline secondary stroke, no fill. `md` is Size 32. */
 export function OutlineButton({
   className,
   children,
+  size = "md",
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement>) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { size?: OutlineButtonSize }) {
   return (
     <button
       type="button"
       className={clsx(
-        "flex h-8 items-center justify-center rounded-md border border-secondary px-2 text-base text-primary hover:bg-quaternary",
+        "flex items-center justify-center rounded-md border border-secondary text-base text-primary hover:bg-quaternary",
+        SIZE[size],
         className,
       )}
       {...props}

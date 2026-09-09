@@ -15,6 +15,22 @@
   color: var(--tt-theme-text);
 }
 
+.notion-like-editor-wrapper--card .notion-like-editor-content .tiptap.ProseMirror.notion-like-editor {
+  max-width: none;
+  padding: 12px 14px 24px;
+  font-size: var(--font-size-chat);
+  line-height: var(--line-height-chat);
+
+  p {
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  h4 {
+    font-size: 1.125em;
+  }
+}
+
 .notion-like-editor-wrapper .tiptap.ProseMirror {
   --doc-after-h2: 0.675rem;
   font-family: "DM Sans", var(--font-sans, sans-serif);
@@ -48,6 +64,12 @@
     font-size: 1.125rem;
     font-weight: 600;
     margin: 1.5em 0 0.35em;
+  }
+
+  h4 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    margin: 1.25em 0 0.35em;
   }
 
   [data-type="horizontalRule"] {

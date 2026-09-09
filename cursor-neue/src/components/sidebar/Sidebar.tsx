@@ -1,6 +1,7 @@
 import { useMemo, useRef, type ReactNode } from "react";
 import {
   isAgentPinned,
+  isBot,
   isProject,
   isTrackerOwner,
   pinnedAgentsFor,
@@ -12,11 +13,12 @@ import {
   type AgentGroupBy,
 } from "@/types";
 import { useWindowId } from "@/components/window/WindowContext";
-import { useWindow, useWorkspaceStore } from "@/store/useWorkspaceStore";
+import { useStatusFocused, useWindow, useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { useTabDragStore } from "@/store/tabDrag";
-import { useFeatureFlags } from "@/store/useFeatureFlags";
+import { useBotsEnabled, useFeatureFlags } from "@/store/useFeatureFlags";
 import { useUiStore } from "@/store/useUiStore";
 import { AgentList } from "@/components/sidebar/AgentList";
+import { BotCell } from "@/components/sidebar/BotCell";
 import { chatsRows, recentsList } from "@/components/sidebar/chatsRows";
 import { ProjectGroup } from "@/components/sidebar/ProjectGroup";
 import { ProjectsSectionNux } from "@/components/sidebar/ProjectsNux";
@@ -112,6 +114,49 @@ function NewProjectButton() {
   return <HeaderPlusButton label="New project" onClick={() => openNewProject(windowId)} />;
 }
 
+function NewBotButton() {
+  const windowId = useWindowId();
+  const createBot = useWorkspaceStore((s) => s.createBot);
+  return <HeaderPlusButton label="New bot" onClick={() => createBot(windowId)} />;
+}
+
+function BotsSection() {
+  const botsOn = useBotsEnabled();
+  const agents = useWorkspaceStore((s) => s.agents);
+  const botOrder = useWorkspaceStore((s) => s.botOrder);
+  const pinnedAgents = useWorkspaceStore((s) => s.pinnedAgents);
+  const windowId = useWindowId();
+  const activeAgentId = useWindow()?.activeAgentId;
+  const statusFocused = useStatusFocused();
+  const selectedIds = useUiStore((s) => s.sidebarAgentSelection[windowId]?.ids);
+  const multi = (selectedIds?.length ?? 0) > 1;
+  const bots = useMemo(
+    () =>
+      botOrder
+        .map((id) => agents[id])
+        .filter(
+          (a): a is Agent => !!a && isBot(a) && !a.draft && !isAgentPinned(pinnedAgents, a.id),
+        ),
+    [agents, botOrder, pinnedAgents],
+  );
+  if (!botsOn) return null;
+  return (
+    <SidebarSection
+      id={SIDEBAR_SECTION.bots}
+      label="Bots"
+      trailing={<NewBotButton />}
+    >
+      {bots.map((bot) => (
+        <BotCell
+          key={bot.id}
+          bot={bot}
+          selected={multi ? selectedIds.includes(bot.id) : !statusFocused && bot.id === activeAgentId}
+        />
+      ))}
+    </SidebarSection>
+  );
+}
+
 function NewAgentButton() {
   const windowId = useWindowId();
   const createAgent = useWorkspaceStore((s) => s.createAgent);
@@ -154,9 +199,11 @@ function ProjectsSection() {
 function PinnedSection() {
   const agents = useWorkspaceStore((s) => s.agents);
   const pinnedAgents = useWorkspaceStore((s) => s.pinnedAgents);
+  const botsOn = useBotsEnabled();
   const pinned = useMemo(
-    () => pinnedAgentsFor(agents, pinnedAgents),
-    [agents, pinnedAgents],
+    () =>
+      pinnedAgentsFor(agents, pinnedAgents).filter((item) => botsOn || !isBot(item)),
+    [agents, botsOn, pinnedAgents],
   );
   if (pinned.length === 0) return null;
   return (
@@ -283,9 +330,10 @@ function GroupSection({
 
 export function Sidebar() {
   const windowId = useWindowId();
-  const storedGroupBy = useWindow()?.agentGroupBy ?? "workspace";
+  const win = useWindow();
+  const storedGroupBy = win?.agentGroupBy ?? "workspace";
   const createAgent = useWorkspaceStore((s) => s.createAgent);
-  const openCustomize = useUiStore((s) => s.openCustomize);
+  const openStatusTab = useWorkspaceStore((s) => s.openStatusTab);
   const oneList = useFeatureFlags((s) => s.sidebarSections) === "one";
   // Separate already has a Projects section. Group-by Projects would hide
   // that section and keep one merged-looking list.
@@ -306,7 +354,6 @@ export function Sidebar() {
     <aside className="flex h-full w-full select-none flex-col bg-sidebar backdrop-blur-[12px]">
       <SidebarHeader />
       <div className="flex shrink-0 flex-col gap-px px-2 pt-1">
-        <SidebarCell label="Search" leading={{ kind: "action", icon: "magnifying-glass" }} />
         <SidebarCell
           label="New Agent"
           leading={{ kind: "action", icon: "agent" }}
@@ -314,13 +361,15 @@ export function Sidebar() {
         />
         <SidebarCell label="Inbox" leading={{ kind: "action", icon: "tray" }} />
         <SidebarCell
-          label="Customize"
-          leading={{ kind: "action", icon: "extensions" }}
-          onClick={() => openCustomize(windowId)}
+          label="Status"
+          leading={{ kind: "action", icon: "pulse" }}
+          selected={!!win?.statusFocused}
+          onClick={() => openStatusTab(windowId)}
         />
       </div>
 
       <ScrollArea className="min-h-0 flex-1" contentClassName="gap-3 px-2 pb-3 pt-3">
+        <BotsSection />
         {!oneList && groupBy !== "workspace" && <ProjectsSection />}
         <PinnedSection />
         {group}

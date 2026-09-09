@@ -2,6 +2,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import {
   DEFAULT_WORKSPACE_ID,
   isAgentPinned,
+  isBot,
   isProject,
   isTrackerOwner,
   isWorkspace,
@@ -143,7 +144,7 @@ export function createProjectFromDroppedAgents(windowId: string, ids: string[]):
     .map((id) => workspace.agents[id])
     .filter(
       (agent): agent is NonNullable<typeof agent> =>
-        !!agent && !isProject(agent) && !isWorkspace(agent) && !agent.thread,
+        !!agent && !isProject(agent) && !isBot(agent) && !isWorkspace(agent) && !agent.thread,
     );
   if (agents.length === 0) return;
   const workspaceId = primaryWorkspaceId(agents[0]) || DEFAULT_WORKSPACE_ID;

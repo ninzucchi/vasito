@@ -2,6 +2,8 @@ import { useMemo, type CSSProperties, type ReactNode } from "react";
 import clsx from "clsx";
 import type { Node, NodeProps, NodeTypes } from "@xyflow/react";
 import { Icon } from "@/components/ui/Icon";
+import { BotBadge } from "@/components/ui/BotBadge";
+import { BotIdenticon } from "@/components/ui/BotIdenticon";
 import { AgentStatusIcon } from "@/components/ui/AgentStatusIcon";
 import { EmptyTabSidebar } from "./placeholder";
 import {
@@ -39,6 +41,7 @@ import {
 } from "@/data/tasks";
 import { agentDisplayTitle } from "@/lib/agentDisplayName";
 import { formatRelativeTime } from "@/lib/relativeTime";
+import { openTaskAssociation, taskOpenTarget } from "@/lib/taskOpen";
 import { taskTicketId } from "@/lib/taskTicketId";
 import {
   AGENT_BOARD_STATUSES,
@@ -47,6 +50,7 @@ import {
   PROJECT_COLOR_WELL,
   agentsInProject,
   contentProjectId,
+  isBot,
   isProject,
   isWorkspace,
   lastAgentReply,
@@ -177,18 +181,20 @@ function AgentLeading({ status }: { status: AgentStatus }) {
 }
 
 const CHIP =
-  "inline-flex h-[22px] max-w-full items-center gap-1 rounded-full border border-secondary px-2 text-sm text-secondary";
+  "inline-flex h-[22px] min-w-0 max-w-full items-center gap-1 rounded-full border border-secondary px-2 text-sm text-secondary";
 
 function TaskChips({
   task,
   projectId,
   onOpenAgent,
   className,
+  wrap = true,
 }: {
   task: Task;
   projectId: string;
   onOpenAgent: (agentId: string) => void;
   className?: string;
+  wrap?: boolean;
 }) {
   const windowId = useWindowId();
   const openPrTab = useWorkspaceStore((s) => s.openPrTab);
@@ -199,7 +205,7 @@ function TaskChips({
     : undefined;
   if (!agent && !pr) return null;
   return (
-    <span className={clsx("flex flex-wrap gap-1", className)}>
+    <span className={clsx("flex gap-1", wrap ? "flex-wrap" : "flex-nowrap", className)}>
       {agent && (
         <button
           type="button"
@@ -210,7 +216,16 @@ function TaskChips({
           }}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <Icon name="agent" size="sm" color="inherit" />
+          {isBot(agent) ? (
+            <BotIdenticon
+              name={agent.title}
+              color={agent.color ?? "blue"}
+              size={12}
+              seed={agent.identiconSeed}
+            />
+          ) : (
+            <Icon name="agent" size="sm" color="inherit" />
+          )}
           <span className="min-w-0 truncate">{agentDisplayTitle(agent, namesMode)}</span>
         </button>
       )}
@@ -254,47 +269,70 @@ function TaskCard({
   onOpenAgent: (agentId: string) => void;
 }) {
   const windowId = useWindowId();
-  const openContextFile = useWorkspaceStore((s) => s.openContextFile);
+  const openPrTab = useWorkspaceStore((s) => s.openPrTab);
   const isRow = layout === "rows";
   const ticketId =
     useFeatureFlags((s) => s.docIds) === "ids" ? taskTicketId(projectId, task) : null;
   const done = task.status === "completed";
+  const canOpen = !!taskOpenTarget(task);
+  const openLinked = () =>
+    openTaskAssociation(task, {
+      openPr: (prId) => openPrTab(windowId, prId),
+      openAgent: onOpenAgent,
+    });
   const titleClass = clsx(
-    "line-clamp-3 text-base",
+    "text-base",
+    isRow ? "truncate" : "line-clamp-3",
     done ? "font-normal text-tertiary line-through" : "font-medium text-primary",
   );
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={() => openContextFile(windowId, projectId, task.id)}
-      onKeyDown={(e) => {
-        if (e.key !== "Enter" && e.key !== " ") return;
-        e.preventDefault();
-        openContextFile(windowId, projectId, task.id);
-      }}
+      role={canOpen ? "button" : undefined}
+      tabIndex={canOpen ? 0 : undefined}
+      onClick={canOpen ? openLinked : undefined}
+      onKeyDown={
+        canOpen
+          ? (e) => {
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              openLinked();
+            }
+          : undefined
+      }
       className={clsx(
-        "flex w-full shrink-0 cursor-pointer px-[var(--board-inset)] text-left nodrag nopan",
+        "flex w-full shrink-0 px-[var(--board-inset)] text-left nodrag nopan",
+        canOpen && "cursor-pointer",
         isRow
-          ? "items-start gap-[var(--board-lead-gap)] rounded-lg py-[9px] hover:bg-quinary"
-          : clsx("flex-col gap-1.5 py-2", CARD_SURFACE, CARD_HOVER_COLUMN),
+          ? clsx(
+              "items-center gap-[var(--board-lead-gap)] rounded-lg py-[9px]",
+              canOpen && "hover:bg-quinary",
+            )
+          : clsx("flex-col gap-1.5 py-2", CARD_SURFACE, canOpen && CARD_HOVER_COLUMN),
       )}
     >
       {ticketId && !isRow && <span className={TASK_ID_CARD}>{ticketId}</span>}
-      <div className="flex w-full min-w-0 items-start gap-[var(--board-lead-gap)]">
+      <div
+        className={clsx(
+          "flex w-full min-w-0 gap-[var(--board-lead-gap)]",
+          isRow ? "items-center" : "items-start",
+        )}
+      >
         <LeadSlot>
           <Icon name={taskStatusIcon(task.status)} size="sm" color="tertiary" />
         </LeadSlot>
         {isRow ? (
-          <span className="flex min-w-0 flex-1 items-start gap-3">
+          <span className="flex min-w-0 flex-1 items-center gap-3">
             {ticketId && <span className={TASK_ID_ROW}>{ticketId}</span>}
             <span className={clsx("min-w-0 flex-1", titleClass)}>{task.title}</span>
-            <TaskChips
-              task={task}
-              projectId={projectId}
-              onOpenAgent={onOpenAgent}
-              className="max-w-[45%] shrink-0 justify-end"
-            />
+            <span className="flex h-[22px] max-w-[45%] shrink-0 items-center justify-end overflow-hidden">
+              <TaskChips
+                task={task}
+                projectId={projectId}
+                onOpenAgent={onOpenAgent}
+                wrap={false}
+                className="justify-end"
+              />
+            </span>
           </span>
         ) : (
           <span className="flex min-w-0 flex-1 flex-col gap-1">
@@ -597,45 +635,44 @@ export function ProjectContent() {
   const setView = useUiStore((s) => s.setProjectBoardView);
   const tasksOnly = useFeatureFlags((s) => s.projectSurface) === "tasks";
   const merged = useFeatureFlags((s) => s.sidebarSections) === "one";
-  const boardSurface: Surface = tasksOnly ? "tasks" : surface;
 
   const workspaceOwner = agent && isWorkspace(agent) ? agent : undefined;
-  const projectId = workspaceOwner ? null : agent ? contentProjectId(agent) : null;
-  const project = workspaceOwner ?? (projectId ? agents[projectId] : undefined);
-  const boardId = workspaceOwner?.id ?? projectId;
-  const children = workspaceOwner
-    ? workspaceBoardAgents(agents, agentOrder, workspaceOwner.id)
-    : projectId
-      ? agentsInProject(agents, agentOrder, projectId)
-      : [];
+  const botOwner = agent && isBot(agent) ? agent : undefined;
+  const projectId = workspaceOwner || botOwner ? null : agent ? contentProjectId(agent) : null;
+  const project = workspaceOwner ?? botOwner ?? (projectId ? agents[projectId] : undefined);
+  const boardId = workspaceOwner?.id ?? botOwner?.id ?? projectId;
+  const hideAgents = !!botOwner;
+  const children = hideAgents
+    ? []
+    : workspaceOwner
+      ? workspaceBoardAgents(agents, agentOrder, workspaceOwner.id)
+      : projectId
+        ? agentsInProject(agents, agentOrder, projectId)
+        : [];
   const prs = workspaceOwner
     ? workspaceBoardPrs(agents, agentOrder, workspaceOwner.id)
-    : projectId
-      ? pullRequestsFor(projectId)
+    : boardId
+      ? pullRequestsFor(boardId)
       : [];
   const tasks: BoardTask[] = workspaceOwner
     ? workspaceBoardTasks(agents, agentOrder, workspaceOwner.id)
-    : projectId
-      ? tasksFor(projectId).map((task) => ({ ...task, projectId }))
+    : boardId
+      ? tasksFor(boardId).map((task) => ({ ...task, projectId: boardId }))
       : [];
+  const requestedSurface: Surface = tasksOnly ? "tasks" : surface;
+  const boardSurface: Surface =
+    hideAgents && requestedSurface === "agents" ? "tasks" : requestedSurface;
 
   const agentsByStatus = (status: AgentStatus): Agent[] =>
     children.filter((agent) => projectBoardAgentStatus(agent.status) === status);
   const prsByState = (state: PrState): PullRequest[] =>
     prs.filter((item) => item.state === state);
-  const tasksByStatus = (status: TaskStatus): BoardTask[] =>
-    tasks.filter((item) => item.status === status);
   const agentStatuses = emptyToEndPinned(
     AGENT_BOARD_STATUSES,
     (status) => agentsByStatus(status).length === 0,
     "idle",
   );
   const prStates = emptyToEnd(PR_BOARD_STATES, (state) => prsByState(state).length === 0);
-  const taskStatuses = emptyToEndPinned(
-    TASK_BOARD_STATUSES,
-    (status) => tasksByStatus(status).length === 0,
-    "completed",
-  );
 
   const tasksEmpty = boardSurface === "tasks" && tasks.length === 0;
 
@@ -773,7 +810,14 @@ export function ProjectContent() {
               <div />
             ) : (
             <div className="flex min-w-0 items-center gap-2">
-              {project && (
+              {project && (hideAgents ? (
+                <BotBadge
+                  name={project.title}
+                  color={project.color ?? "blue"}
+                  size={30}
+                  seed={project.identiconSeed}
+                />
+              ) : (
                 <span
                   aria-hidden
                   className={clsx(
@@ -788,7 +832,7 @@ export function ProjectContent() {
                     style={{ color: PROJECT_COLOR_STROKE[project.color ?? "blue"] }}
                   />
                 </span>
-              )}
+              ))}
               <p className="min-w-0 truncate text-lg font-medium text-primary">
                 {project?.title ?? ""}
               </p>
@@ -797,13 +841,20 @@ export function ProjectContent() {
           ) : (
             <Segmented
               label={merged ? "Tracker surface" : "Project surface"}
-              value={surface}
+              value={boardSurface}
               onSelect={setSurface}
-              options={[
-                { id: "tasks", label: "Tasks" },
-                { id: "agents", label: "Agents" },
-                { id: "prs", label: "PRs" },
-              ]}
+              options={
+                hideAgents
+                  ? [
+                      { id: "tasks", label: "Tasks" },
+                      { id: "prs", label: "PRs" },
+                    ]
+                  : [
+                      { id: "tasks", label: "Tasks" },
+                      { id: "agents", label: "Agents" },
+                      { id: "prs", label: "PRs" },
+                    ]
+              }
             />
           )}
         </div>
@@ -842,9 +893,11 @@ export function ProjectContent() {
           projectColor={
             project && !isWorkspace(project) ? (project.color ?? "blue") : "default"
           }
+          identiconSeed={project?.identiconSeed}
           tasks={tasks}
           agents={children}
           prs={prs}
+          variant={hideAgents ? "bot" : "project"}
         />
       ) : null}
       {!tasksEmpty && view !== "map" && view !== "doc" && (
@@ -866,24 +919,13 @@ export function ProjectContent() {
             const listView = view === "rows" ? "rows" : "columns";
             switch (boardSurface) {
               case "tasks":
-                return taskStatuses.map((status) => (
-                  <BoardGroup
-                    key={status}
+                return (
+                  <TaskStatusGroups
+                    tasks={tasks}
                     layout={listView}
-                    title={TASK_STATUS_LABEL[status]}
-                    icon={taskStatusIcon(status)}
-                  >
-                    {tasksByStatus(status).map((item) => (
-                      <TaskCard
-                        key={item.id}
-                        task={item}
-                        projectId={item.projectId}
-                        layout={listView}
-                        onOpenAgent={(agentId) => setActiveAgent(windowId, agentId)}
-                      />
-                    ))}
-                  </BoardGroup>
-                ));
+                    onOpenAgent={(agentId) => setActiveAgent(windowId, agentId)}
+                  />
+                );
               case "agents":
                 return agentStatuses.map((status) => (
                   <BoardGroup
@@ -929,3 +971,44 @@ export function ProjectContent() {
 }
 
 export const ProjectSidebar = () => <EmptyTabSidebar />;
+
+/** Tracker task columns or rows. Status reuses this for the cross-owner board. */
+export function TaskStatusGroups({
+  tasks,
+  layout,
+  onOpenAgent,
+}: {
+  tasks: BoardTask[];
+  layout: "columns" | "rows";
+  onOpenAgent: (agentId: string) => void;
+}) {
+  const tasksByStatus = (status: TaskStatus): BoardTask[] =>
+    tasks.filter((item) => item.status === status);
+  const taskStatuses = emptyToEndPinned(
+    TASK_BOARD_STATUSES,
+    (status) => tasksByStatus(status).length === 0,
+    "completed",
+  );
+  return (
+    <>
+      {taskStatuses.map((status) => (
+        <BoardGroup
+          key={status}
+          layout={layout}
+          title={TASK_STATUS_LABEL[status]}
+          icon={taskStatusIcon(status)}
+        >
+          {tasksByStatus(status).map((item) => (
+            <TaskCard
+              key={`${item.projectId}:${item.id}`}
+              task={item}
+              projectId={item.projectId}
+              layout={layout}
+              onOpenAgent={onOpenAgent}
+            />
+          ))}
+        </BoardGroup>
+      ))}
+    </>
+  );
+}

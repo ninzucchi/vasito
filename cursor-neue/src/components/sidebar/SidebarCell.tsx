@@ -9,6 +9,7 @@ import {
 } from "react";
 import clsx from "clsx";
 import { AgentStatusIcon } from "@/components/ui/AgentStatusIcon";
+import { BotIdenticon } from "@/components/ui/BotIdenticon";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { DISCLOSURE_GROUP, FolderDisclosureIcon } from "@/components/ui/FolderDisclosureIcon";
 import {
@@ -35,6 +36,7 @@ export type SidebarLeading =
       collapsible?: boolean;
     }
   | { kind: "agent"; status: AgentStatus }
+  | { kind: "bot"; color: ProjectColor; name: string; seed?: number }
   | { kind: "action"; icon: IconName };
 
 function projectFolderIcon(icon: IconName, open: boolean): IconName {
@@ -100,6 +102,17 @@ function Leading({ leading, selected }: { leading: SidebarLeading; selected?: bo
           <AgentStatusIcon status={leading.status} />
         </span>
       );
+    case "bot":
+      return (
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+          <BotIdenticon
+            name={leading.name}
+            color={leading.color}
+            size={18}
+            seed={leading.seed}
+          />
+        </span>
+      );
     default: {
       const _exhaustive: never = leading;
       return _exhaustive;
@@ -150,9 +163,11 @@ export function SidebarCell({
   const nestPad = sidebarNestPad(level);
   const agentLike =
     leading?.kind === "agent" ||
+    leading?.kind === "bot" ||
     (leading?.kind === "project" && leading.collapsible === false) ||
     (muted && !leading);
-  const projectColor = leading?.kind === "project" ? leading.color : undefined;
+  const projectColor =
+    leading?.kind === "project" || leading?.kind === "bot" ? leading.color : undefined;
   const projectHover = projectColor ? PROJECT_COLOR_HOVER_BG[projectColor] : "hover:bg-quaternary";
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(label);

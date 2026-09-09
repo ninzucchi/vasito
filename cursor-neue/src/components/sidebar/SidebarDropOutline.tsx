@@ -5,7 +5,7 @@ const DROP_OUTLINE_PAD = 4;
 
 /** Outline portaled to the sidebar scroll clip. The 4px pad can extend past a
  *  section without the window-level z-997 layer covering Search / New Agent /
- *  Inbox / Customize. */
+ *  Inbox. */
 export function SidebarDropOutline({
   hostRef,
   active,

@@ -4,6 +4,12 @@ const PROJECT_TICKET_PREFIX: Record<string, string> = {
   "p-sidebar": "SB",
   "p-keyboard": "KB",
   "p-base-ui": "BU",
+  "b-pr-tracker": "PR",
+  "b-qa-team": "QA",
+  "b-bug-watcher": "BW",
+  "b-docs": "DC",
+  "b-research": "RS",
+  "b-release": "RC",
 };
 
 function ticketPrefix(projectId?: string): string {
@@ -18,5 +24,5 @@ function ticketNumber(task: Pick<Task, "id">): number {
 }
 
 export function taskTicketId(projectId: string | undefined, task: Pick<Task, "id">): string {
-  return `#${ticketPrefix(projectId)}-${ticketNumber(task)}`;
+  return `${ticketPrefix(projectId)}-${ticketNumber(task)}`;
 }

@@ -10,10 +10,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/menu";
 import { TAB_REGISTRY } from "@/components/tabs/registry";
-import { CONTENT_TAB_TYPES } from "@/types";
+import { CONTENT_TAB_TYPES, isBot } from "@/types";
 import { projectBoardIcon, tabTypeLabel } from "@/lib/mergedLabels";
-import { useMergedSidebar } from "@/store/useFeatureFlags";
-import { useActiveScopeId, useWorkspaceStore } from "@/store/useWorkspaceStore";
+import { useBotsEnabled, useMergedSidebar } from "@/store/useFeatureFlags";
+import { useActiveAgent, useActiveScopeId, useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { useUiStore } from "@/store/useUiStore";
 import { useWindowId } from "@/components/window/WindowContext";
 import { fileIconFor, getRecentFiles } from "@/data/files";
@@ -26,6 +26,11 @@ export function AddTabMenu({ tileId }: { tileId: string }) {
   // Files tab), so the menu shows files that actually exist in this workspace.
   const recents = getRecentFiles(useActiveScopeId());
   const merged = useMergedSidebar();
+  const botsOn = useBotsEnabled();
+  const agent = useActiveAgent();
+  const tabTypes = CONTENT_TAB_TYPES.filter(
+    (type) => type !== "bot" || (botsOn && isBot(agent)),
+  );
 
   return (
     <DropdownMenu>
@@ -34,7 +39,7 @@ export function AddTabMenu({ tileId }: { tileId: string }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent>
         <DropdownMenuSection>
-          {CONTENT_TAB_TYPES.map((type) => (
+          {tabTypes.map((type) => (
             <DropdownMenuItem key={type} onSelect={() => addTab(tileId, type)}>
               <Icon
                 name={type === "project" ? projectBoardIcon(merged) : TAB_REGISTRY[type].icon}

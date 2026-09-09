@@ -36,6 +36,7 @@ function islandTabLabel(tab: Tab, merged: boolean): string {
   if (tab.type === "files" && !filesTabHasOpenFile(tab)) return TAB_LABEL.files;
   if (tab.type === "context" && !contextTabHasOpenFile(tab)) return TAB_LABEL.context;
   if (tab.type === "project") return tabTypeLabel("project", merged);
+  if (tab.type === "bot") return tabTypeLabel("bot", merged);
   if (tab.type === "pr" && tab.prId) {
     const pr = pullRequestById(tab.prId);
     if (pr) return prTabTitle(pr);
@@ -82,7 +83,7 @@ function IslandRow({
       <span className="truncate">{label}</span>
     </button>
   );
-  if (!workspaceId || type === "pr") return row;
+  if (!workspaceId || type === "pr" || type === "bot") return row;
   const isPinned = pinned.includes(type);
   return (
     <ContextMenu>

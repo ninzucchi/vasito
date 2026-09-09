@@ -1,14 +1,20 @@
 import {
   AGENT_NAMES_LABEL,
   AGENT_NAMES_MODES,
+  BOTS_LABEL,
+  BOTS_MODES,
   DOC_IDS_LABEL,
   DOC_IDS_MODES,
+  IDENTICON_STYLE_LABEL,
+  IDENTICON_STYLE_MODES,
   PROJECT_FOLDERS_LABEL,
   PROJECT_FOLDERS_MODES,
   PROJECT_SURFACE_LABEL,
   PROJECT_SURFACE_MODES,
   SIDEBAR_SECTIONS_LABEL,
   SIDEBAR_SECTIONS_MODES,
+  TRIGGERS_LABEL,
+  TRIGGERS_MODES,
   useFeatureFlags,
 } from "@/store/useFeatureFlags";
 
@@ -29,6 +35,12 @@ export function DebugBar() {
   const setDocIds = useFeatureFlags((s) => s.setDocIds);
   const agentNames = useFeatureFlags((s) => s.agentNames);
   const setAgentNames = useFeatureFlags((s) => s.setAgentNames);
+  const bots = useFeatureFlags((s) => s.bots);
+  const setBots = useFeatureFlags((s) => s.setBots);
+  const triggers = useFeatureFlags((s) => s.triggers);
+  const setTriggers = useFeatureFlags((s) => s.setTriggers);
+  const identiconStyle = useFeatureFlags((s) => s.identiconStyle);
+  const setIdenticonStyle = useFeatureFlags((s) => s.setIdenticonStyle);
   return (
     <div
       data-debug-bar=""
@@ -69,6 +81,31 @@ export function DebugBar() {
         value={agentNames}
         onSelect={setAgentNames}
       />
+      <Segmented
+        label="Bots"
+        options={BOTS_MODES}
+        labels={BOTS_LABEL}
+        value={bots}
+        onSelect={setBots}
+      />
+      {bots === "bots" && (
+        <>
+          <Segmented
+            label="Triggers"
+            options={TRIGGERS_MODES}
+            labels={TRIGGERS_LABEL}
+            value={triggers}
+            onSelect={setTriggers}
+          />
+          <Segmented
+            label="Identicons"
+            options={IDENTICON_STYLE_MODES}
+            labels={IDENTICON_STYLE_LABEL}
+            value={identiconStyle}
+            onSelect={setIdenticonStyle}
+          />
+        </>
+      )}
     </div>
   );
 }

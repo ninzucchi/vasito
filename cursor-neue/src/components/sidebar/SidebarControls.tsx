@@ -200,12 +200,18 @@ export function MainSidebarToggle() {
   );
 }
 
-/** Sidebar toggle. In the sidebar header when expanded, and in the window's
- *  top-left when collapsed. */
+/** Sidebar toggle and Search. In the sidebar header when expanded, and in
+ *  the window's top-left when collapsed. */
 export function SidebarNavControls() {
   return (
     <div className="flex items-center gap-0.5">
       <MainSidebarToggle />
+      <IconButton
+        name="magnifying-glass"
+        size="lg"
+        color="tertiary"
+        aria-label="Search"
+      />
     </div>
   );
 }

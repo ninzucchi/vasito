@@ -15,10 +15,13 @@ import type { IconName } from "@/icons/iconNames";
 import {
   contentScopeId,
   ensureWorkspaceAgents,
+  isBot,
   isProject,
   isWorkspace,
   normalizeWorkspaceIds,
 } from "@/types";
+import { BOT_TRIGGERS } from "@/data/botTriggers";
+import { botProfileFor } from "@/lib/botDetails";
 import { titleCaseName } from "@/lib/titleCase";
 import { MAIN_WINDOW_ID, type WorkspaceData } from "@/store/useWorkspaceStore";
 import {
@@ -99,6 +102,140 @@ function project(
 }
 
 export const SEED_PROJECT_IDS = ["p-sidebar", "p-keyboard", "p-base-ui"] as const;
+
+function bot(
+  id: string,
+  workspaceIds: string | readonly string[],
+  title: string,
+  status: AgentStatus,
+  updatedAt: number,
+  messages: ChatMessage[],
+  color: ProjectColor,
+  description: string,
+  createdAt: number,
+): Agent {
+  const seeded = agent(id, workspaceIds, "main", title, status, updatedAt, messages);
+  return {
+    ...seeded,
+    kind: "bot",
+    groupParentId: null,
+    color,
+    description,
+    createdAt,
+    ...botProfileFor(id, title, description),
+  };
+}
+
+export const SEED_BOT_IDS = [
+  "b-pr-tracker",
+  "b-qa-team",
+  "b-bug-watcher",
+  "b-docs",
+  "b-research",
+  "b-release",
+] as const;
+
+const PR_TRACKER_MESSAGES: ChatMessage[] = [
+  a(
+    "Watching open PRs across Everysphere.\n\nThree reviews are waiting. Two have failing checks. Drafts stay quiet unless you ask.",
+    "Worked 9s",
+  ),
+  u("Start with the failing checks. Don’t nag on draft PRs."),
+  a(
+    "Locked. Drafts stay quiet.\n\nI’ll surface failing checks first, then review waits. If a check looks flaky I’ll say so instead of treating it as a blocker.",
+    "Worked 7s",
+  ),
+  u("Good. Ping me only when a review is actually blocking merge."),
+  a(
+    "Locked. One ping when a review blocks merge. Nothing else.",
+    "Worked 3s",
+  ),
+];
+
+const QA_TEAM_MESSAGES: ChatMessage[] = [
+  a(
+    "QA desk is open.\n\nI can run the smoke path, the keyboard pass, and the empty-state sweep. Tell me which surface you want covered.",
+    "Worked 6s",
+  ),
+  u("Smoke the project header and the new Bots section. Don’t file nits on copy."),
+  a(
+    "Scope is header + Bots section. Copy nits stay off the list.\n\nI’ll report broken hit targets, missing names, and anything that traps focus. Want me to start now?",
+    "Worked 8s",
+  ),
+  u("Yes. One report when you’re done — not a drip of comments."),
+  a(
+    "Starting now. One report when the pass is done. No drip.",
+    "Worked 4s",
+  ),
+];
+
+const BUG_WATCHER_MESSAGES: ChatMessage[] = [
+  a(
+    "I’m on the error stream.\n\nTwo repeats showed up today: a null on the island close, and a stale tab title after rename. Neither is paging yet.",
+    "Worked 11s",
+  ),
+  u("File the island close. Park the title bug unless it happens twice more."),
+  a(
+    "Island close is filed. Title rename stays on watch.\n\nI’ll only escalate the title bug after a second reproduce. New unique errors still come through.",
+    "Worked 5s",
+  ),
+  u("If Sentry volume jumps, say so before you file a pile."),
+  a(
+    "Volume jumps get a ping first. I will not file a pile without saying so.",
+    "Worked 3s",
+  ),
+];
+
+const DOCS_MESSAGES: ChatMessage[] = [
+  a(
+    "Docs desk.\n\nI keep the project brief and the sidebar rules in sync. Right now the Bots section has no page. Want a stub?",
+    "Worked 8s",
+  ),
+  u("Write a short stub. Bots are singular. No folder chrome. Tracker is tasks and PRs only."),
+  a(
+    "Stub is in.\n\nBots share the project chat path and stay one row. The tracker lists the bot’s own tasks. PRs are the only pill. No Agents surface.",
+    "Worked 10s",
+  ),
+  u("Don’t invent a create-bot dialog. Plus makes one and we rename."),
+  a(
+    "No create dialog. Plus makes one. We rename after.",
+    "Worked 3s",
+  ),
+];
+
+const RESEARCH_MESSAGES: ChatMessage[] = [
+  a(
+    "Research desk is ready.\n\nI can pull prior art on identicons, folder chrome, or how other tools show always-on agents. Which one?",
+    "Worked 7s",
+  ),
+  u("Identicons. Grid v4 hex melt. I want to know what reads at 18px."),
+  a(
+    "At 18px the melt mass reads; interior dots don’t.\n\nHex-flat + blob, grid 5, no tile ground. Two-tone ink collapses. One muted family token is enough.",
+    "Worked 14s",
+  ),
+  u("Keep that. No animation in the sidebar."),
+  a(
+    "Locked. Hex-flat + blob at 18px. No animation in the row.",
+    "Worked 3s",
+  ),
+];
+
+const RELEASE_MESSAGES: ChatMessage[] = [
+  a(
+    "Release captain on deck.\n\nNothing is staged. Last ship was the debug-bar label rename. Say when you want a cut.",
+    "Worked 4s",
+  ),
+  u("Not tonight. Hold the cut until Bots is in and the identicons look settled."),
+  a(
+    "Holding.\n\nI’ll watch for a green sidebar pass and a bot chat that opens without a tracker. No cut until you say so.",
+    "Worked 6s",
+  ),
+  u("If something blocks the hold, tell me. Don’t silently slip the cut."),
+  a(
+    "If something blocks the hold, I say so. The cut does not slip on its own.",
+    "Worked 3s",
+  ),
+];
 
 const SIDEBAR_PROJECT_MESSAGES: ChatMessage[] = [
   a(
@@ -248,6 +385,72 @@ export function createSeed(): WorkspaceData {
   ];
 
   const agentsList: Agent[] = [
+    bot(
+      "b-pr-tracker",
+      "everysphere",
+      "PR Tracker",
+      "running",
+      daysAgo(0, 18, 10),
+      [...PR_TRACKER_MESSAGES, ...BOT_TRIGGERS["b-pr-tracker"]],
+      "yellow",
+      "Watches open PRs and flags failing checks and blocking reviews.",
+      daysAgo(2, 9),
+    ),
+    bot(
+      "b-qa-team",
+      "everysphere",
+      "QA Team",
+      "unread",
+      daysAgo(0, 17, 40),
+      [...QA_TEAM_MESSAGES, ...BOT_TRIGGERS["b-qa-team"]],
+      "purple",
+      "Runs smoke and keyboard passes, and files only what breaks a path.",
+      daysAgo(4, 11),
+    ),
+    bot(
+      "b-bug-watcher",
+      "everysphere",
+      "Bug Watcher",
+      "attention",
+      daysAgo(0, 18, 25),
+      [...BUG_WATCHER_MESSAGES, ...BOT_TRIGGERS["b-bug-watcher"]],
+      "red",
+      "Reads the error stream, files repeats, and parks one-offs.",
+      daysAgo(1, 15),
+    ),
+    bot(
+      "b-docs",
+      "everysphere",
+      "Docs Maintainer",
+      "idle",
+      daysAgo(0, 16, 5),
+      [...DOCS_MESSAGES, ...BOT_TRIGGERS["b-docs"]],
+      "blue",
+      "Keeps briefs aligned with what the sidebar actually does.",
+      daysAgo(6, 10),
+    ),
+    bot(
+      "b-research",
+      "everysphere",
+      "Research Desk",
+      "idle",
+      daysAgo(1, 14),
+      [...RESEARCH_MESSAGES, ...BOT_TRIGGERS["b-research"]],
+      "orange",
+      "Pulls prior art and reports what still reads at sidebar size.",
+      daysAgo(5, 13),
+    ),
+    bot(
+      "b-release",
+      "everysphere",
+      "Release Captain",
+      "idle",
+      daysAgo(2, 11),
+      [...RELEASE_MESSAGES, ...BOT_TRIGGERS["b-release"]],
+      "green",
+      "Holds the cut until you say ship.",
+      daysAgo(8, 9),
+    ),
     project(
       "p-sidebar",
       "everysphere",
@@ -571,9 +774,17 @@ export function createSeed(): WorkspaceData {
   for (const [sid, scope] of Object.entries(contentByScope)) {
     scope.layout = ensurePinnedTabs({}, sid, scope.layout);
   }
-  // Each project / workspace owner owns a private scope with one Tracker tab.
-  // Both start open so selecting the folder shows the board immediately.
+  // Each project / workspace / bot owns a private scope with one Tracker tab.
+  // Projects and workspaces start open. Bots keep the pane collapsed.
   for (const ag of Object.values(agents)) {
+    if (isBot(ag)) {
+      contentByScope[contentScopeId(ag)] = {
+        layout: makeProjectLayout(),
+        open: false,
+        cleared: false,
+      };
+      continue;
+    }
     if (!isProject(ag) && !isWorkspace(ag)) continue;
     contentByScope[contentScopeId(ag)] = {
       layout: makeProjectLayout(),
@@ -592,6 +803,7 @@ export function createSeed(): WorkspaceData {
     agents,
     agentOrder,
     projectOrder: ["p-sidebar", "p-keyboard", "p-base-ui"],
+    botOrder: [...SEED_BOT_IDS],
     groupFolderOrder: [
       "p-sidebar",
       "p-keyboard",

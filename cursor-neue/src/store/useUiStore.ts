@@ -40,6 +40,9 @@ interface UiState {
   /** Board layout. Lives here so leaving the Tracker tab does not reset it. */
   projectBoardView: "columns" | "rows" | "doc" | "map";
   setProjectBoardView: (view: "columns" | "rows" | "doc" | "map") => void;
+  /** Status page layout. List is rows; Board is columns; Feed is the stream. */
+  statusBoardView: "rows" | "columns" | "feed";
+  setStatusBoardView: (view: "rows" | "columns" | "feed") => void;
   /** Composer follow-up tray on a project chat (Agents / PRs). */
   projectFollowUpTray: "prs" | "subagents" | null;
   setProjectFollowUpTray: (tray: "prs" | "subagents" | null) => void;
@@ -86,6 +89,8 @@ export const useUiStore = create<UiState>((set) => ({
   setProjectBoardSurface: (surface) => set({ projectBoardSurface: surface }),
   projectBoardView: "columns",
   setProjectBoardView: (view) => set({ projectBoardView: view }),
+  statusBoardView: "rows",
+  setStatusBoardView: (view) => set({ statusBoardView: view }),
   projectFollowUpTray: null,
   setProjectFollowUpTray: (tray) => set({ projectFollowUpTray: tray }),
   joinedAgentPulseAt: {},

@@ -136,7 +136,7 @@ export function TabBar({
     <div
       className={clsx(
         "flex shrink-0 items-stretch bg-chrome",
-        isChat ? "h-[var(--titlebar-h)]" : "h-toolbar",
+        "h-[var(--titlebar-h)]",
         !isChat && "shadow-[inset_0_-1px_0_0_var(--border-tertiary)]",
       )}
     >
@@ -206,7 +206,7 @@ export function TabBar({
                 </ContextMenuItem>
                 {/* Pin the tab's TYPE to the workspace (chat and standalone
                     scopes have no workspace to pin to). */}
-                {!isChat && tab.type !== "pr" && workspaceId && pinned && (
+                {!isChat && tab.type !== "pr" && tab.type !== "bot" && workspaceId && pinned && (
                   <ContextMenuItem onSelect={() => togglePinnedTab(workspaceId, tab.type)}>
                     <Icon
                       name={pinned.includes(tab.type) ? "pin-slash" : "pin"}

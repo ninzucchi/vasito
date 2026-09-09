@@ -6,6 +6,7 @@ import {
   type PullRequest,
 } from "@/data/pullRequests";
 import { taskFileHref } from "@/data/taskFiles";
+import { taskOpenTarget } from "@/lib/taskOpen";
 import { type Task, type TaskStatus } from "@/data/tasks";
 import { agentDisplayTitle } from "@/lib/agentDisplayName";
 import { taskTicketId } from "@/lib/taskTicketId";
@@ -43,26 +44,25 @@ function taskTitleContent(
   tags: JSONContent[],
 ): JSONContent {
   const titleMarks = strikeTitle ? [{ type: "strike" }] : undefined;
+  const href = taskOpenTarget(task) ? taskFileHref(projectId ?? "", task) : undefined;
+  const linkMark = href ? [{ type: "link" as const, attrs: { href } }] : [];
   const content: JSONContent[] = [];
   if (showIds) {
     content.push({
       type: "text",
       text: taskTicketId(projectId, task),
-      marks: [
-        { type: "code" },
-        { type: "link", attrs: { href: taskFileHref(projectId ?? "", task) } },
-      ],
+      marks: [{ type: "code" }, ...linkMark],
     });
     content.push(space(), {
       type: "text",
       text: task.title,
-      ...(titleMarks ? { marks: titleMarks } : {}),
+      marks: [...(titleMarks ?? []), ...linkMark],
     });
   } else {
     content.push({
       type: "text",
       text: task.title,
-      ...(titleMarks ? { marks: titleMarks } : {}),
+      marks: [...(titleMarks ?? []), ...linkMark],
     });
   }
   for (const tag of tags) {
@@ -124,12 +124,15 @@ function taskItemWithTags(
   prs: PullRequest[],
   projectId: string | undefined,
   showIds: boolean,
+  hideAgents: boolean,
 ): JSONContent {
   const tags: JSONContent[] = [];
   const pr = task.prId ? prs.find((item) => item.id === task.prId) : undefined;
   if (pr && showTaskPr(task, pr)) tags.push(prLinkNode(pr, `#${pr.number}`));
   const agent = task.agentId ? agents.find((item) => item.id === task.agentId) : undefined;
-  if (agent && showTaskAgent(task, agent)) tags.push(agentLinkNode(agent, showIds));
+  if (!hideAgents && agent && showTaskAgent(task, agent)) {
+    tags.push(agentLinkNode(agent, showIds));
+  }
   return {
     type: "taskItem",
     attrs: { checked },
@@ -144,10 +147,11 @@ const taggedTaskList = (
   prs: PullRequest[],
   projectId: string | undefined,
   showIds: boolean,
+  hideAgents: boolean,
 ): JSONContent => ({
   type: "taskList",
   content: items.map((task) =>
-    taskItemWithTags(task, checked, agents, prs, projectId, showIds),
+    taskItemWithTags(task, checked, agents, prs, projectId, showIds, hideAgents),
   ),
 });
 
@@ -268,6 +272,8 @@ export function boardDocContent({
   prs,
   showIds = false,
   showNames = false,
+  includeMeta = true,
+  hideAgents = false,
 }: {
   surface: BoardDocSurface;
   projectId?: string;
@@ -278,6 +284,10 @@ export function boardDocContent({
   prs: PullRequest[];
   showIds?: boolean;
   showNames?: boolean;
+  /** Decisions and Links. Off for bots. */
+  includeMeta?: boolean;
+  /** Skip agent pills and the Agents surface. */
+  hideAgents?: boolean;
 }): JSONContent {
   const namedAgents = showNames
     ? agents.map((item) => ({ ...item, title: agentDisplayTitle(item, "names") }))
@@ -299,12 +309,21 @@ export function boardDocContent({
         if (group.length === 0) continue;
         addSection(
           heading(3, TASK_DOC_STATUS_LABEL[status]),
-          taggedTaskList(group, status === "completed", namedAgents, prs, projectId, showIds),
+          taggedTaskList(
+            group,
+            status === "completed",
+            namedAgents,
+            prs,
+            projectId,
+            showIds,
+            hideAgents,
+          ),
         );
       }
       break;
     }
     case "agents": {
+      if (hideAgents) break;
       for (const status of AGENT_TRAY_STATUSES) {
         const group = namedAgents.filter((agent) => agent.status === status);
         if (group.length === 0) continue;
@@ -353,7 +372,7 @@ export function boardDocContent({
     sections.push(paragraph("Nothing in this view yet."));
   }
 
-  sections.push(...decisionsAndLinks(projectId));
+  if (includeMeta) sections.push(...decisionsAndLinks(projectId));
 
   return { type: "doc", content: sections };
 }

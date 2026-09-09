@@ -7,6 +7,11 @@ export function blankProjectTitle(merged = sidebarIsMerged()): string {
   return merged ? "New Group" : "New Project";
 }
 
+/** Draft / fallback title for a bot agent. */
+export function blankBotTitle(): string {
+  return "New Bot";
+}
+
 export function tabTypeLabel(type: TabType, _merged = sidebarIsMerged()): string {
   return TAB_LABEL[type];
 }

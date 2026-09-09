@@ -24,6 +24,11 @@ export function projectCreatedDividerText(createdAt: number, now = Date.now()): 
   return `Project Created ∙ ${formatRelativeTime(createdAt, now)}`;
 }
 
+/** First divider under a bot transcript. */
+export function botCreatedDividerText(createdAt: number, now = Date.now()): string {
+  return `Bot Created ∙ ${formatRelativeTime(createdAt, now)}`;
+}
+
 function joinNames(names: string[]): string {
   if (names.length === 1) return names[0];
   if (names.length === 2) return `${names[0]} and ${names[1]}`;

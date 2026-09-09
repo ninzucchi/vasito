@@ -11,8 +11,10 @@ import { TerminalContent, TerminalSidebar } from "@/components/tabs/tabTypes/Ter
 import { CanvasContent, CanvasSidebar } from "@/components/tabs/tabTypes/CanvasTab";
 import { ReviewContent, ReviewSidebar } from "@/components/tabs/tabTypes/ReviewTab";
 import { ProjectContent, ProjectSidebar } from "@/components/tabs/tabTypes/ProjectTab";
+import { BotContent, BotSidebar } from "@/components/tabs/tabTypes/BotTab";
 import { PrContent, PrSidebar } from "@/components/tabs/tabTypes/PrTab";
 import { ChatBody } from "@/components/chat/ChatBody";
+import { StatusContent, StatusSidebar } from "@/components/tabs/tabTypes/StatusTab";
 import { fileIconFor } from "@/data/files";
 import { pullRequestById, prStateIcon } from "@/data/pullRequests";
 import { projectBoardIcon } from "@/lib/mergedLabels";
@@ -44,6 +46,7 @@ export function tabIcon(tab: Tab, merged = sidebarIsMerged()): IconName {
 
 export const TAB_REGISTRY: Record<TabType, TabTypeDef> = {
   chat: { icon: "agent", hasSidebar: false, Content: ChatBody, Sidebar: () => null },
+  status: { icon: "pulse", hasSidebar: false, Content: StatusContent, Sidebar: StatusSidebar },
   files: { icon: "folder", hasSidebar: true, Content: FilesContent, Sidebar: FilesSidebar },
   browser: { icon: "globe", hasSidebar: true, Content: BrowserContent, Sidebar: BrowserSidebar },
   terminal: {
@@ -59,6 +62,12 @@ export const TAB_REGISTRY: Record<TabType, TabTypeDef> = {
     hasSidebar: false,
     Content: ProjectContent,
     Sidebar: ProjectSidebar,
+  },
+  bot: {
+    icon: "i-circle",
+    hasSidebar: false,
+    Content: BotContent,
+    Sidebar: BotSidebar,
   },
   pr: {
     icon: "git-pull-request",

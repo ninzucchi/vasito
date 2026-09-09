@@ -16,6 +16,7 @@ import { prStateColor, prTabTitle, pullRequestById } from "@/data/pullRequests";
 import { useTabDragStore } from "@/store/tabDrag";
 import {
   useActiveAgent,
+  useStatusFocused,
   useActiveContent,
   useActiveScopeId,
   useWorkspaceStore,
@@ -74,7 +75,9 @@ export function TabHandle({
       ? prTabTitle(pr)
       : tab.type === "project"
         ? tabTypeLabel("project", merged)
-        : tab.type === "files" && !filesTabHasOpenFile(tab)
+        : tab.type === "bot"
+          ? tabTypeLabel("bot", merged)
+          : tab.type === "files" && !filesTabHasOpenFile(tab)
           ? TAB_LABEL.files
           : tab.type === "context" && !contextTabHasOpenFile(tab)
             ? TAB_LABEL.context
@@ -139,7 +142,13 @@ export function TabHandle({
   // WINDOW's active agent (the one driving the content pane), not merely each
   // tile's active tab — so a resting tile's tab stays flat until focused.
   const activeAgentId = useActiveAgent()?.id;
-  const focusedChat = isChat && active && !!tab.agentId && tab.agentId === activeAgentId;
+  const statusFocused = useStatusFocused();
+  const focusedChat =
+    isChat &&
+    active &&
+    (tab.type === "status"
+      ? statusFocused
+      : !statusFocused && !!tab.agentId && tab.agentId === activeAgentId);
   // Content tabs keep the chrome->content divider hairline along their bottom
   // edge, so the strip reads as one continuous line above the content below.
   // Chat tabs are inset rounded pills (like sidebar rows), so no hairline.
@@ -198,8 +207,9 @@ export function TabHandle({
         dragging && "opacity-40",
       )}
     >
-      {/* Chat pills are text-only; content tabs keep their type/file icon. */}
-      {!isChat && (
+      {/* Chat pills are text-only, except Status, which keeps its type icon.
+          Content tabs keep their type/file icon. */}
+      {(!isChat || tab.type === "status") && (
         <Icon
           name={tabIcon(tab, merged)}
           size="base"

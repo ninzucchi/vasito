@@ -143,7 +143,7 @@ export function Window() {
   const mainRef = useRef<HTMLDivElement>(null);
   const [islandCompact, setIslandCompact] = useState(false);
   const [islandInset, setIslandInset] = useState(0);
-  const islandVisible = !useActiveContent().open;
+  const islandVisible = !useActiveContent().open && !win?.statusFocused;
   useLayoutEffect(() => {
     const el = mainRef.current;
     if (!el) return;
@@ -263,16 +263,19 @@ export function Window() {
           </PanelGroup>
           {/* Open-tabs + pinned-tab-types island, floated at the window's
               top-right (below the toolbar row) over whichever pane sits there.
+              Hidden while the content pane is open or Status is focused.
               The wrapper stays click-through so only the rows take pointer. */}
-          <div
-            className={clsx(
-              "pointer-events-none absolute right-2 top-11 z-40",
-              islandCompact ? "w-auto" : "w-[200px]",
-              !dragging && "[&_button]:pointer-events-auto",
-            )}
-          >
-            <PinnedIsland compact={islandCompact} />
-          </div>
+          {islandVisible && (
+            <div
+              className={clsx(
+                "pointer-events-none absolute right-2 top-11 z-40",
+                islandCompact ? "w-auto" : "w-[200px]",
+                !dragging && "[&_button]:pointer-events-auto",
+              )}
+            >
+              <PinnedIsland compact={islandCompact} />
+            </div>
+          )}
           {/* Scoped to this window's shell so the scrim is clipped to the window
               (rounded corners + overflow-hidden) rather than the whole desktop. */}
           <CustomizeModal />

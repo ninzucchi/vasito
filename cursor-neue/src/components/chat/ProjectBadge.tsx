@@ -4,7 +4,7 @@ import { PROJECT_COLOR_STROKE, type ProjectColor } from "@/types";
 
 const DEFAULT_SIZE = 80;
 
-function badgeStyle(color: ProjectColor, size: number): CSSProperties {
+function badgeStyle(color: ProjectColor, size: number, circle: boolean): CSSProperties {
   const key = PROJECT_COLOR_STROKE[color];
   const fillFrom = `color-mix(in oklab, ${key} 18%, var(--bg-chrome))`;
   const fillTo = `color-mix(in oklab, ${key} 8%, var(--bg-chrome))`;
@@ -13,7 +13,7 @@ function badgeStyle(color: ProjectColor, size: number): CSSProperties {
   return {
     width: size,
     height: size,
-    borderRadius: Math.round(size * 0.2),
+    borderRadius: circle ? size / 2 : Math.round(size * 0.2),
     border: "1px solid transparent",
     backgroundImage: `linear-gradient(var(--badge-angle), ${fillFrom}, ${fillTo}), linear-gradient(var(--badge-angle), ${strokeFrom}, ${strokeTo})`,
     backgroundOrigin: "padding-box, border-box",
@@ -26,16 +26,18 @@ export function ProjectBadge({
   color,
   icon,
   size = DEFAULT_SIZE,
+  circle = false,
 }: {
   color: ProjectColor;
   icon: IconName;
   size?: number;
+  circle?: boolean;
 }) {
-  const glyph = Math.round(size * 0.5);
+  const glyph = Math.round(size * (circle ? 0.42 : 0.5));
   return (
     <div
-      className="flex items-center justify-center [--badge-angle:0deg] dark:[--badge-angle:180deg]"
-      style={badgeStyle(color, size)}
+      className="flex items-center justify-center overflow-hidden [--badge-angle:0deg] dark:[--badge-angle:180deg]"
+      style={badgeStyle(color, size, circle)}
     >
       <Icon
         name={icon}

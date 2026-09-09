@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Composer } from "@/components/chat/Composer";
+import { BotThreadHeader } from "@/components/chat/BotThreadHeader";
 import { ProjectFollowUp } from "@/components/chat/ProjectFollowUp";
 import { ProjectThreadHeader } from "@/components/chat/ProjectThreadHeader";
 import { ThreadOriginPin } from "@/components/chat/ThreadOrigin";
@@ -7,14 +8,25 @@ import {
   TranscriptMarkdown,
   TRANSCRIPT_TYPE,
 } from "@/components/chat/TranscriptMarkdown";
+import { Icon } from "@/components/ui/Icon";
 import { ScrollArea } from "@/components/ui/ScrollArea";
-import { isProject, isTrackerOwner, isWorkspace, type Agent, type Tab } from "@/types";
-import { projectCreatedDividerText } from "@/lib/projectJoinNotice";
+import { botCreatedDividerText, projectCreatedDividerText } from "@/lib/projectJoinNotice";
+import { useTriggersEnabled } from "@/store/useFeatureFlags";
 import {
   useActiveAgent,
   useWorkspaceStore,
   type ThreadDisposition,
 } from "@/store/useWorkspaceStore";
+import {
+  isBot,
+  isProject,
+  isTrackerOwner,
+  isWorkspace,
+  transcriptMessages,
+  type Agent,
+  type ChatMessage,
+  type Tab,
+} from "@/types";
 
 /** The shared transcript column: centered, capped at the chat reading width.
  *  The right padding grows by --island-inset (set on the window shell) so the
@@ -31,6 +43,19 @@ function TranscriptDivider({ text }: { text: string }) {
       <span className="h-px min-w-4 flex-1 bg-[var(--border-tertiary)]" />
       <span className="shrink-0 text-sm text-tertiary">{text}</span>
       <span className="h-px min-w-4 flex-1 bg-[var(--border-tertiary)]" />
+    </div>
+  );
+}
+
+function TriggerMessage({ message }: { message: ChatMessage }) {
+  const source = message.trigger;
+  return (
+    <div className="mr-auto w-fit max-w-[500px] rounded-2xl bg-elevated px-3.5 py-3 text-left shadow-[0_0_0_1px_var(--border-tertiary)]">
+      <div className="mb-1.5 flex items-center gap-1.5 text-sm text-tertiary">
+        <Icon name={source?.icon ?? "arrows-left-right"} size="sm" color="tertiary" />
+        <span>{source?.label ?? "Trigger"}</span>
+      </div>
+      <TranscriptMarkdown text={message.text} />
     </div>
   );
 }
@@ -65,7 +90,11 @@ export function ChatBody({ tab, tileId }: { tab: Tab; tileId: string }) {
   const tabAgent = useWorkspaceStore((s) => (tab.agentId ? s.agents[tab.agentId] : undefined));
   const activeAgent = useActiveAgent();
   const agent = tabAgent ?? activeAgent;
-  const messages = agent?.messages ?? [];
+  const triggersOn = useTriggersEnabled();
+  const messages = useMemo(
+    () => transcriptMessages(agent?.messages ?? [], triggersOn),
+    [agent?.messages, triggersOn],
+  );
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   // Threads spawned from this conversation, grouped by source message index,
@@ -103,7 +132,8 @@ export function ChatBody({ tab, tileId }: { tab: Tab; tileId: string }) {
     messages.length === 0 &&
     !agent?.thread &&
     !isWorkspace(agent) &&
-    !isProject(agent)
+    !isProject(agent) &&
+    !isBot(agent)
   ) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 bg-chrome px-3">
@@ -126,15 +156,25 @@ export function ChatBody({ tab, tileId }: { tab: Tab; tileId: string }) {
         contentClassName={`${COLUMN} pb-4 pt-2`}
         viewportRef={transcriptRef}
       >
-        {isTrackerOwner(agent) && (
+        {agent && isTrackerOwner(agent) && (
           <div className="my-12">
             <ProjectThreadHeader project={agent} />
           </div>
         )}
+        {agent && isBot(agent) && (
+          <div className="my-12">
+            <BotThreadHeader bot={agent} />
+          </div>
+        )}
         <div className="flex flex-col gap-10">
-            {isProject(agent) && (
+            {agent && isProject(agent) && (
               <TranscriptDivider
                 text={projectCreatedDividerText(agent.createdAt ?? agent.updatedAt)}
+              />
+            )}
+            {agent && isBot(agent) && (
+              <TranscriptDivider
+                text={botCreatedDividerText(agent.createdAt ?? agent.updatedAt)}
               />
             )}
             {messages.map((m, i) => {
@@ -150,6 +190,10 @@ export function ChatBody({ tab, tileId }: { tab: Tab; tileId: string }) {
                       <TranscriptMarkdown text={m.text} />
                     </div>
                   );
+                  break;
+                case "trigger":
+                  // Same bubble as a user turn, left-aligned, with a source line.
+                  body = <TriggerMessage message={m} />;
                   break;
                 case "agent":
                   // Agent turn: tool line + reply with a 12px gap. px-2.5 matches

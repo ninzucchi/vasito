@@ -30,21 +30,21 @@ export const SIDEBAR_SECTIONS_LABEL: Record<SidebarSectionsMode, string> = {
 
 /**
  * Project chrome in the sidebar.
- *  - Folders: always expandable. The body lists every child agent, first
+ *  - All: always expandable. The body lists every child agent, first
  *    three plus a More row, or all four when a fifth would not exist.
  *    Elevation still exists; it does not gate the list.
- *  - Focus Folders: project folders nest elevated children only. X demotes
+ *  - Some: project folders nest elevated children only. X demotes
  *    even if the agent is unread or working. No chevron when empty.
  *    Repo folders stay regular folders and list every child.
- *  - Agents: project rows act like agents; they keep the colored leading icon.
+ *  - None: project rows act like agents; they keep the colored leading icon.
  */
 export const PROJECT_FOLDERS_MODES = ["folders", "focus", "agents"] as const;
 export type ProjectFoldersMode = (typeof PROJECT_FOLDERS_MODES)[number];
 
 export const PROJECT_FOLDERS_LABEL: Record<ProjectFoldersMode, string> = {
-  folders: "Folders",
-  focus: "Focus Folders",
-  agents: "Agents",
+  folders: "All",
+  focus: "Some",
+  agents: "None",
 };
 
 /** Whether a project row can expand and list children in the sidebar. */
@@ -82,7 +82,7 @@ export const PROJECT_SURFACE_LABEL: Record<ProjectSurfaceMode, string> = {
 /**
  * Ticket and mention codes in the project document.
  *  - Off: task titles and agent names only.
- *  - IDs: each task starts with a gray `#XX-N` mark. Agent names get `@`.
+ *  - IDs: each task starts with a gray `XX-N` mark. Agent names get `@`.
  */
 export const DOC_IDS_MODES = ["off", "ids"] as const;
 export type DocIdsMode = (typeof DOC_IDS_MODES)[number];
@@ -105,11 +105,57 @@ export const AGENT_NAMES_LABEL: Record<AgentNamesMode, string> = {
   names: "Names",
 };
 
+/**
+ * Bot agents and their chrome.
+ *  - Off: no Bots section, no bot rows, no bot chat or Bot tab.
+ *  - Bots: sidebar Bots list, bot threads, and the Bot tracker tab.
+ */
+export const BOTS_MODES = ["off", "bots"] as const;
+export type BotsMode = (typeof BOTS_MODES)[number];
+
+export const BOTS_LABEL: Record<BotsMode, string> = {
+  off: "Off",
+  bots: "Bots",
+};
+
+/**
+ * Inbound trigger turns in bot chats.
+ *  - Off: bot transcripts stay user / reply.
+ *  - Triggers: left-aligned event messages (Slack, PR, Linear, timer) plus
+ *    a bot reply. Seeded on every bot; hidden unless this mode is on.
+ */
+export const TRIGGERS_MODES = ["off", "triggers"] as const;
+export type TriggersMode = (typeof TRIGGERS_MODES)[number];
+
+export const TRIGGERS_LABEL: Record<TriggersMode, string> = {
+  off: "Off",
+  triggers: "Triggers",
+};
+
+/**
+ * Bot identicon generator. Numbers match the Sand-Toolkit walls.
+ *  - 1: existing Grid v4 hex-blob
+ *  - 2: orbital systems — 1–5 intersecting rings, weight 1.8, no tile
+ *  - 3: wireframe intelligences — density 1, weight 1.8, no tile
+ *  - 4: discs — two rings, no tile
+ *  - 5: single sensor — size 3, no tile, fills the clip circle
+ */
+export const IDENTICON_STYLE_MODES = ["1", "2", "3", "4", "5"] as const;
+export type IdenticonStyleMode = (typeof IDENTICON_STYLE_MODES)[number];
+
+export const IDENTICON_STYLE_LABEL: Record<IdenticonStyleMode, string> = {
+  "1": "1",
+  "2": "2",
+  "3": "3",
+  "4": "4",
+  "5": "5",
+};
+
 interface FeatureFlagState {
   flags: Record<FeatureFlag, boolean>;
   /** Dedicated Projects section vs one Chats list. Default is Merged. */
   sidebarSections: SidebarSectionsMode;
-  /** Project folder chrome. Default is Folders (all children). */
+  /** Project folder chrome. Default is Some (elevated children). */
   projectFolders: ProjectFoldersMode;
   /** Project board surfaces. Default is Tasks. */
   projectSurface: ProjectSurfaceMode;
@@ -117,12 +163,21 @@ interface FeatureFlagState {
   docIds: DocIdsMode;
   /** Celestial names for project subagents. Default is Off. */
   agentNames: AgentNamesMode;
+  /** Bot agents. Default is Bots (visible). */
+  bots: BotsMode;
+  /** Inbound trigger turns in bot chats. Default is Off. */
+  triggers: TriggersMode;
+  /** Bot identicon generator. Default is the existing Grid v4 mark. */
+  identiconStyle: IdenticonStyleMode;
   toggleFlag: (flag: FeatureFlag) => void;
   setSidebarSections: (mode: SidebarSectionsMode) => void;
   setProjectFolders: (mode: ProjectFoldersMode) => void;
   setProjectSurface: (mode: ProjectSurfaceMode) => void;
   setDocIds: (mode: DocIdsMode) => void;
   setAgentNames: (mode: AgentNamesMode) => void;
+  setBots: (mode: BotsMode) => void;
+  setTriggers: (mode: TriggersMode) => void;
+  setIdenticonStyle: (mode: IdenticonStyleMode) => void;
 }
 
 export const useFeatureFlags = create<FeatureFlagState>((set) => ({
@@ -132,14 +187,20 @@ export const useFeatureFlags = create<FeatureFlagState>((set) => ({
   sidebarSections: "two",
   projectFolders: "focus",
   projectSurface: "tasks",
-  docIds: "off",
+  docIds: "ids",
   agentNames: "off",
+  bots: "bots",
+  triggers: "off",
+  identiconStyle: "1",
   toggleFlag: (flag) => set((s) => ({ flags: { ...s.flags, [flag]: !s.flags[flag] } })),
   setSidebarSections: (sidebarSections) => set({ sidebarSections }),
   setProjectFolders: (projectFolders) => set({ projectFolders }),
   setProjectSurface: (projectSurface) => set({ projectSurface }),
   setDocIds: (docIds) => set({ docIds }),
   setAgentNames: (agentNames) => set({ agentNames }),
+  setBots: (bots) => set({ bots }),
+  setTriggers: (triggers) => set({ triggers }),
+  setIdenticonStyle: (identiconStyle) => set({ identiconStyle }),
 }));
 
 /** Flag value outside React (store actions); components subscribe instead. */
@@ -152,3 +213,15 @@ export const sidebarIsMerged = (): boolean =>
 
 export const useMergedSidebar = (): boolean =>
   useFeatureFlags((s) => s.sidebarSections) === "one";
+
+/** Bots are on. Components subscribe; store actions read `botsEnabled`. */
+export const botsEnabled = (): boolean => useFeatureFlags.getState().bots === "bots";
+
+export const useBotsEnabled = (): boolean => useFeatureFlags((s) => s.bots) === "bots";
+
+/** Trigger turns are on. Components subscribe; store actions read `triggersEnabled`. */
+export const triggersEnabled = (): boolean =>
+  useFeatureFlags.getState().triggers === "triggers";
+
+export const useTriggersEnabled = (): boolean =>
+  useFeatureFlags((s) => s.triggers) === "triggers";

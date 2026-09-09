@@ -54,13 +54,13 @@ export function ProjectThreadHeader({ project }: { project: Agent }) {
       </div>
       <OutlineButton
         aria-pressed={contentOpen}
-        aria-label={contentOpen ? "Hide project tracker" : "Show project tracker"}
+        aria-label={contentOpen ? "Hide tracker" : "Show tracker"}
         onClick={() => {
           if (contentOpen) setContentOpen(windowId, false);
           else openPinnedTab(windowId, "project");
         }}
       >
-        Project Tracker
+        View Tracker
       </OutlineButton>
     </div>
   );

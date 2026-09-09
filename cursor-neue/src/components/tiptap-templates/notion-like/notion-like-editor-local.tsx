@@ -54,6 +54,8 @@ export function NotionEditorLocal({
   placeholder = "Type / for commands…",
   cover,
   onLinkClick,
+  variant = "page",
+  onUpdate,
 }: {
   content: JSONContent;
   sourceKey: string;
@@ -62,12 +64,22 @@ export function NotionEditorLocal({
   cover?: ReactNode;
   /** Regular `<a>` marks (not agent or PR nodes). */
   onLinkClick?: (href: string) => void;
+  /** Card sits in a nested scroll box with tight pad. */
+  variant?: "page" | "card";
+  onUpdate?: (json: JSONContent) => void;
 }) {
   const onLinkClickRef = useRef(onLinkClick);
   onLinkClickRef.current = onLinkClick;
+  const onUpdateRef = useRef(onUpdate);
+  onUpdateRef.current = onUpdate;
+  const skipUpdateRef = useRef(true);
 
   const editor = useEditor({
     immediatelyRender: false,
+    onUpdate: ({ editor: next }) => {
+      if (skipUpdateRef.current) return;
+      onUpdateRef.current?.(next.getJSON());
+    },
     editorProps: {
       attributes: {
         class: "notion-like-editor",
@@ -153,13 +165,21 @@ export function NotionEditorLocal({
   contentRef.current = content;
   useEffect(() => {
     if (!editor) return;
+    skipUpdateRef.current = true;
     editor.commands.setContent(contentRef.current);
+    skipUpdateRef.current = false;
   }, [editor, sourceKey]);
 
   if (!editor) return null;
 
   return (
-    <div className="notion-like-editor-wrapper">
+    <div
+      className={
+        variant === "card"
+          ? "notion-like-editor-wrapper notion-like-editor-wrapper--card"
+          : "notion-like-editor-wrapper"
+      }
+    >
       <EditorContext.Provider value={{ editor }}>
         <div className={cover ? "notion-like-editor-layout has-cover" : "notion-like-editor-layout"}>
           {cover ? <div className="notion-like-editor-cover">{cover}</div> : null}

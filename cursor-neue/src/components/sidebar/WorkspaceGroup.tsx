@@ -15,7 +15,7 @@ import {
 import { useWindowId } from "@/components/window/WindowContext";
 import { useFeatureFlags, useMergedSidebar } from "@/store/useFeatureFlags";
 import { useUiStore } from "@/store/useUiStore";
-import { useWindow, useWorkspaceStore } from "@/store/useWorkspaceStore";
+import { useStatusFocused, useWindow, useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { SidebarCell } from "@/components/sidebar/SidebarCell";
 import { SidebarCollapse } from "@/components/sidebar/SidebarCollapse";
 import { AgentList } from "@/components/sidebar/AgentList";
@@ -50,7 +50,9 @@ export function WorkspaceGroup({
   const setActiveAgent = useWorkspaceStore((s) => s.setActiveAgent);
   const activeAgentId = win?.activeAgentId;
   const unionFolder = isUnionWorkspaceId(workspace.id);
-  const workspaceSelected = merged && !unionFolder && activeAgentId === workspace.id;
+  const statusFocused = useStatusFocused();
+  const workspaceSelected =
+    merged && !unionFolder && !statusFocused && activeAgentId === workspace.id;
   const drag = useDragWorkspaceOut(workspace.id, workspace.name);
   const onPointerDown = unionFolder ? undefined : drag.onPointerDown;
   const dragging = unionFolder ? false : drag.dragging;

@@ -20,7 +20,7 @@ import { titleCaseFolderName } from "@/lib/titleCase";
 import { useWindowId } from "@/components/window/WindowContext";
 import { projectFolderCollapsible, useFeatureFlags, useMergedSidebar } from "@/store/useFeatureFlags";
 import { useUiStore } from "@/store/useUiStore";
-import { useWindow, useWorkspaceStore } from "@/store/useWorkspaceStore";
+import { useStatusFocused, useWindow, useWorkspaceStore } from "@/store/useWorkspaceStore";
 import { useTabDragStore } from "@/store/tabDrag";
 import { beginTabDrag } from "@/components/tile/tabDragInteraction";
 import { isOutsideWindows, newWindowGeo } from "@/components/desktop/geometry";
@@ -68,7 +68,8 @@ export function ProjectGroup({
   const windowId = useWindowId();
   const win = useWindow();
   const activeAgentId = win?.activeAgentId;
-  const projectSelected = project.id === activeAgentId;
+  const statusFocused = useStatusFocused();
+  const projectSelected = !statusFocused && project.id === activeAgentId;
   const setActiveAgent = useWorkspaceStore((s) => s.setActiveAgent);
   const createAgent = useWorkspaceStore((s) => s.createAgent);
   const updateAgentMeta = useWorkspaceStore((s) => s.updateAgentMeta);
