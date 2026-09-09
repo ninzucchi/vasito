@@ -1,18 +1,16 @@
 ---
-description: Commit message format for the demos monorepo
+description: Commit message format
 alwaysApply: true
 ---
 
 # Commit Messages
 
-Format: `project Type: Imperative sentence-case summary`
+Format: `Type: Imperative sentence-case summary`
 
-- project: the top-level folder the change touches (e.g. `cursor-neue`, `cursor-heirarchy-demo`), or `repo` for root-level or cross-project changes
 - Type: `Feat`, `Fix`, `Refactor`, `Polish`, or `Chore`
-- Keep each commit scoped to one project; split commits rather than mixing projects
 
 Examples:
 
-- `cursor-heirarchy-demo Feat: Add drag-to-group for threads`
-- `cursor-neue Polish: Restyle dock hover states`
-- `repo Chore: Update root gitignore`
+- `Feat: Add drag-to-group for threads`
+- `Polish: Restyle dock hover states`
+- `Chore: Update gitignore`
